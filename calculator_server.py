@@ -10,6 +10,7 @@ import sympy as sp
 import numpy as np
 import matplotlib.pyplot as plt
 from sympy import integrate as sympy_integrate
+import re
 
 # Create MCP Server
 app = FastMCP(
@@ -71,6 +72,34 @@ ALLOW_FUNCTION = {
 }
 
 
+def normalize_expression(expression: str, variable: str = "x") -> str:
+    """
+    Normalize common user math input into SymPy-friendly syntax.
+
+    - Replace caret power (^) with Python power (**)
+    - Insert explicit multiplication where commonly omitted:
+      3x -> 3*x, 2(x+1) -> 2*(x+1), (x+1)(x+2) -> (x+1)*(x+2), x(x+1) -> x*(x+1)
+
+    Only handles implicit multiplication involving the primary variable and parentheses
+    to avoid interfering with function names like sin(x).
+    """
+    s = expression or ""
+    s = s.replace("^", "**")
+    var = re.escape(variable)
+    # Insert * between:
+    # - digit and variable: 3x -> 3*x
+    s = re.sub(rf"(?<=\d)\s*(?={var}\b)", "*", s)
+    # - ) and variable: )x -> )*x
+    s = re.sub(rf"(?<=\))\s*(?={var}\b)", "*", s)
+    # - variable and (: x( -> x*(
+    s = re.sub(rf"(?<={var})\s*(?=\()", "*", s)
+    # - digit and (: 2( -> 2*(
+    s = re.sub(r"(?<=\d)\s*(?=\()", "*", s)
+    # - ) and (: )( -> )*(
+    s = re.sub(r"(?<=\))\s*(?=\()", "*", s)
+    return s
+
+
 @app.tool()
 def calculate(expression: str) -> dict:
     """
@@ -104,9 +133,10 @@ def calculate(expression: str) -> dict:
         - Powers are represented with ** (e.g., x**2, not x^2)
     """
     try:
+        expr_norm = normalize_expression(expression)
         # Safe evaluation of the expression
         result = eval(
-            expression,
+            expr_norm,
             {"__builtins__": {}},
             ALLOW_FUNCTION,
         )
@@ -153,8 +183,8 @@ def solve_equation(equation: str) -> dict:
         if len(parts) != 2:
             return {"error": "Equation must contain an '=' sign"}
 
-        left = sympify(parts[0].strip())
-        right = sympify(parts[1].strip())
+        left = sympify(normalize_expression(parts[0].strip()))
+        right = sympify(normalize_expression(parts[1].strip()))
 
         # Solve the equation
         solutions = solve(left - right, x)
@@ -199,7 +229,7 @@ def differentiate(expression: str, variable: str = "x") -> dict:
     """
     try:
         var = symbols(variable)
-        expr = sympify(expression)
+        expr = sympify(normalize_expression(expression, variable=variable))
         result = diff(expr, var)
         return {"result": str(result)}
     except Exception as e:
@@ -242,7 +272,7 @@ def integrate(expression: str, variable: str = "x") -> dict:
     """
     try:
         var = symbols(variable)
-        expr = sympify(expression)
+        expr = sympify(normalize_expression(expression, variable=variable))
         result = sympy_integrate(expr, var)  # Use sympy_integrate instead of integrate
         return {"result": str(result)}
     except Exception as e:
@@ -647,7 +677,7 @@ def plot_function(
     """
     x = sp.Symbol("x")
     try:
-        expression = sp.sympify(expression)
+        expression = sp.sympify(normalize_expression(expression))
         f = sp.lambdify(x, expression, "numpy")
         x_values = np.linspace(start, end, step)
         y_values = f(x_values)
@@ -690,7 +720,7 @@ def summation(expression: str, start: int = 0, end: int = 10) -> dict:
     """
     try:
         x = sp.Symbol("x")
-        expr = sp.sympify(expression)
+        expr = sp.sympify(normalize_expression(expression))
         summation = sp.Sum(expr, (x, start, end))
         result = summation.doit()
         return {"result": int(result) if result.is_integer else float(result)}
@@ -716,7 +746,7 @@ def expand(expression: str) -> dict:
     """
     try:
         x = sp.Symbol("x")
-        expanded_expression = sp.expand(expression)
+        expanded_expression = sp.expand(normalize_expression(expression))
         return {"result": str(expanded_expression)}
     except Exception as e:
         return {"error": str(e)}
@@ -740,7 +770,7 @@ def factorize(expression: str) -> dict:
     """
     try:
         x = sp.Symbol("x")
-        factored_expression = sp.factor(expression)
+        factored_expression = sp.factor(normalize_expression(expression))
         return {"result": str(factored_expression)}
     except Exception as e:
         return {"error": str(e)}

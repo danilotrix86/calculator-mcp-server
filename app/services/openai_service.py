@@ -1,5 +1,7 @@
 import os
+import json
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -23,7 +25,9 @@ async def init_openai_client() -> None:
         return
     # Load environment from .env if present
     try:
+        # 1) Load project root .env
         load_dotenv()
+        
     except Exception:
         pass
     api_key = os.getenv("OPENAI_API_KEY")
@@ -126,8 +130,25 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
 
     final_choice = (second.get("choices") or [{}])[0]
     final_msg = final_choice.get("message", {})
+    final_content = final_msg.get("content") or ""
+
+    # Fallback: if model produced no final text, surface the tool result directly
+    if not final_content:
+        try:
+            parsed_tool = json.loads(exec_result or "{}")
+            # Prefer common keys
+            for key in ("result", "solutions", "confidence_interval"):
+                if key in parsed_tool and parsed_tool[key] is not None:
+                    final_content = str(parsed_tool[key])
+                    break
+            if not final_content and "error" in parsed_tool:
+                final_content = f"Tool error: {parsed_tool['error']}"
+        except Exception:
+            # Keep empty if parsing fails
+            final_content = ""
+
     return SolveResponse(
-        answer=final_msg.get("content") or "",
+        answer=final_content,
         used_tool=True,
         tool_called=tool_name,
         tool_args=None,
