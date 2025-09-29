@@ -85,11 +85,19 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
         {
             "role": "system",
             "content": (
-                "You are a precise math assistant. When needed, use tools to compute. "
-                "Explain succinctly and return final numeric/symbolic results.")
+                "You are an extremely precise and thorough math assistant. For every problem, provide a complete, step-by-step explanation of your reasoning and calculations starting from STEP 1. "
+                "Do not assume the reader knows any intermediate steps. Explicitly explain how each step is obtained, why it is valid, and how it contributes to the final result. "
+                "Whenever possible, provide both a formal computation and an intuitive understanding of the solution. "
+                "Use computational tools when necessary, and clearly show how they are applied. "
+                "All mathematical expressions must be formatted in LaTeX syntax within markdown. For example: use $x^2$ for powers, $\\sin(x)$ for functions, $\\frac{a}{b}$ for fractions, etc. "
+                "Always wrap expressions in `$…$` for inline math or `$$…$$` for displayed equations. "
+                "After the detailed explanation, clearly present the final numeric or symbolic result. Ensure the process is fully understandable and reproducible. use the language of the problem for the final answer."
+            )
         },
         {"role": "user", "content": query_text},
     ]
+
+
 
     first = await _chat_once(messages, api_key_override=api_key_override)
     if "error" in first:
