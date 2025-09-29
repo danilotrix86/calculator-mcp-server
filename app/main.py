@@ -25,6 +25,7 @@ def create_app() -> FastAPI:
     origins = [
         "http://localhost:5174",
         "https://risolutorematematico.it",
+        "https://www.risolutorematematico.it",
     ]
     
     application.add_middleware(
