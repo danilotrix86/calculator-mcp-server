@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import base64
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from pathlib import Path
 
@@ -82,6 +83,68 @@ async def _chat_once(messages: List[Dict[str, str]], api_key_override: Optional[
             return resp
     except Exception as exc:
         return {"error": str(exc)}
+
+
+async def extract_formula_from_image(image_data: str, api_key_override: Optional[str] = None) -> str:
+    """Extract mathematical formula from an image using OpenAI Vision API.
+    
+    Args:
+        image_data: Base64 encoded image data
+        api_key_override: Optional API key to use instead of the configured one
+        
+    Returns:
+        Extracted formula text or error message
+    """
+    client = _openai_client
+    if api_key_override:
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=api_key_override)
+        except Exception as exc:
+            logging.error(f"Error initializing OpenAI client: {exc}")
+            return f"Error initializing OpenAI client: {exc}"
+    
+    if client is None:
+        logging.error("OPENAI_API_KEY is not configured or client unavailable")
+        return "Error: OPENAI_API_KEY is not configured or client unavailable"
+    
+    try:
+        # Validate base64 data
+        if not image_data or len(image_data) < 100:  # Basic check for valid base64 data
+            logging.error("Invalid image data provided")
+            return "Error: Invalid image data provided"
+            
+        response = await client.chat.completions.create(
+            model="gpt-4o",  # Using GPT-4o which has vision capabilities
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a specialized AI trained to extract mathematical formulas from images. Your task is to identify and transcribe any mathematical formula, equation, or expression visible in the image. Return ONLY the formula in plain text format, using standard ASCII math notation (e.g., x^2 for x², sqrt(x) for √x, * for multiplication). Do not include any explanations, just the formula itself. If there are multiple formulas, extract all of them separated by semicolons."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract the mathematical formula from this image:"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_data}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=300
+        )
+        
+        extracted_text = response.choices[0].message.content
+        result = extracted_text.strip()
+        logging.info(f"Successfully extracted formula: {result[:50]}{'...' if len(result) > 50 else ''}")
+        return result
+    except Exception as e:
+        error_msg = f"Error processing image: {str(e)}"
+        logging.error(error_msg)
+        return error_msg
 
 
 async def solve_with_openai(query_text: str, api_key_override: Optional[str] = None) -> SolveResponse:
@@ -222,42 +285,46 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
         yield json.dumps({"type": "content", "content": content})
         return
 
-    # Handle a single tool call
-    tool = tool_calls[0]
-    tool_name = tool.get("function", {}).get("name")
-    tool_args_str = tool.get("function", {}).get("arguments", "{}")
-    
-    # Notify that we're calling a tool
-    yield json.dumps({
-        "type": "tool_call", 
-        "tool": tool_name, 
-        "args": json.loads(tool_args_str)
-    })
-
-    # Execute tool
-    exec_result = await execute_tool_call(tool_name, tool_args_str)
-    
-    # Notify of tool result
-    try:
-        parsed_result = json.loads(exec_result)
-        logging.info("Streaming tool result: %s", parsed_result)
-        yield json.dumps({"type": "tool_result", "result": parsed_result})
-    except Exception as e:
-        logging.info("Streaming tool result (raw): %s", exec_result)
-        yield json.dumps({"type": "tool_result", "result": exec_result})
-
-    # Provide tool result back to the model
+    # Add assistant message with tool calls
     messages.append({
         "role": "assistant",
         "content": message.get("content") or "",
         "tool_calls": tool_calls,
     })
-    messages.append({
-        "role": "tool",
-        "tool_call_id": tool.get("id", "tool_0"),
-        "name": tool_name or "",
-        "content": exec_result,
-    })
+    
+    # Handle all tool calls
+    for tool in tool_calls:
+        tool_id = tool.get("id", "tool_0")
+        tool_name = tool.get("function", {}).get("name")
+        tool_args_str = tool.get("function", {}).get("arguments", "{}")
+        
+        # Notify that we're calling a tool
+        yield json.dumps({
+            "type": "tool_call", 
+            "tool": tool_name, 
+            "tool_id": tool_id,
+            "args": json.loads(tool_args_str)
+        })
+
+        # Execute tool
+        exec_result = await execute_tool_call(tool_name, tool_args_str)
+        
+        # Notify of tool result
+        try:
+            parsed_result = json.loads(exec_result)
+            logging.info(f"Streaming tool result for {tool_name} ({tool_id}): {parsed_result}")
+            yield json.dumps({"type": "tool_result", "tool_id": tool_id, "result": parsed_result})
+        except Exception as e:
+            logging.info(f"Streaming tool result (raw) for {tool_name} ({tool_id}): {exec_result}")
+            yield json.dumps({"type": "tool_result", "tool_id": tool_id, "result": exec_result})
+
+        # Add tool response message for this specific tool call
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_id,
+            "name": tool_name or "",
+            "content": exec_result,
+        })
 
     # Stream the final response
     second_response = await _chat_once(
@@ -269,15 +336,29 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
     # Handle streaming response
     buffer = ""
     try:
-        async for chunk in second_response:
-            if hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content:
-                content_chunk = chunk.choices[0].delta.content
-                buffer += content_chunk
-                yield json.dumps({"type": "content_chunk", "content": content_chunk})
+        # Check if we got a streaming response or a dict with error
+        if isinstance(second_response, dict):
+            if "error" in second_response:
+                yield json.dumps({"type": "error", "error": second_response["error"]})
+            else:
+                # If it's a dict but not an error, try to get content from it
+                content = ""
+                if "choices" in second_response and len(second_response["choices"]) > 0:
+                    if "message" in second_response["choices"][0]:
+                        content = second_response["choices"][0]["message"].get("content", "")
+                yield json.dumps({"type": "content", "content": content})
+        else:
+            # Normal streaming response
+            async for chunk in second_response:
+                if hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content:
+                    content_chunk = chunk.choices[0].delta.content
+                    buffer += content_chunk
+                    yield json.dumps({"type": "content_chunk", "content": content_chunk})
+            
+            # Send final complete message
+            yield json.dumps({"type": "content_complete", "content": buffer})
     except Exception as e:
+        logging.error(f"Error in streaming response: {str(e)}")
         yield json.dumps({"type": "error", "error": str(e)})
-    
-    # Send final complete message
-    yield json.dumps({"type": "content_complete", "content": buffer})
 
 
