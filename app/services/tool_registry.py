@@ -367,9 +367,13 @@ async def execute_tool_call(name: Optional[str], args_json: str) -> str:
     try:
         logging.info("tool_call %s %s", name, parsed)
         result = func(**parsed)
-        return json.dumps(result)
+        result_json = json.dumps(result)
+        logging.info("tool_result %s %s", name, result)
+        return result_json
     except Exception as exc:
-        return json.dumps({"error": str(exc)})
+        error_result = {"error": str(exc)}
+        logging.info("tool_error %s %s", name, error_result)
+        return json.dumps(error_result)
 
 
 

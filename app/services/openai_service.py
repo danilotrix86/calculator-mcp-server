@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from pathlib import Path
 
@@ -122,6 +123,12 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
 
     # Execute tool
     exec_result = await execute_tool_call(tool_name, tool_args_str)
+    
+    try:
+        parsed_result = json.loads(exec_result)
+        logging.info("Tool result: %s", parsed_result)
+    except Exception as e:
+        logging.info("Tool result (raw): %s", exec_result)
 
     # Provide tool result back to the model
     messages.append({
@@ -233,8 +240,10 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
     # Notify of tool result
     try:
         parsed_result = json.loads(exec_result)
+        logging.info("Streaming tool result: %s", parsed_result)
         yield json.dumps({"type": "tool_result", "result": parsed_result})
-    except:
+    except Exception as e:
+        logging.info("Streaming tool result (raw): %s", exec_result)
         yield json.dumps({"type": "tool_result", "result": exec_result})
 
     # Provide tool result back to the model
