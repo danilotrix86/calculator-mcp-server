@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
     # Configure CORS middleware
     origins = [
         "http://localhost:5174",
+        "http://localhost:5173",
         "https://risolutorematematico.it",
         "https://www.risolutorematematico.it",
     ]
