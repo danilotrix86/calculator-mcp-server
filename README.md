@@ -51,7 +51,29 @@ The Mathematical Calculator MCP Server provides the following tools:
    pip install -r requirements.txt
    ```
 
-3. Run doc-tests to verify everything works:
+3. Set up Supabase (optional for query tracking):
+   - Create a `.env` file in the project root directory
+   - Add your Supabase credentials:
+     ```
+     SUPABASE_URL=https://your-project-url.supabase.co
+     SUPABASE_KEY=your-supabase-service-role-key
+     ```
+   - Create the table in Supabase SQL editor:
+     ```sql
+     CREATE TABLE user_queries (
+         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+         question TEXT NOT NULL,
+         response TEXT,
+         tool_used TEXT,
+         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+     );
+     
+     -- Create an index on created_at for faster queries
+     CREATE INDEX user_queries_created_at_idx ON user_queries(created_at);
+     ```
+
+4. Run doc-tests to verify everything works:
    ```bash
    bash run_doctests.sh
    ```

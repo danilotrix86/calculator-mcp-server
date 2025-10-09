@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.solve_routes import router as solve_router
+from app.routes.health_routes import router as health_router
 from app.services.openai_service import init_openai_client, shutdown_openai_client
 from app.middleware.logging import add_logging_middleware
 
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    
     application = FastAPI(title="Math Solver API", version="0.1.0", lifespan=lifespan)
     
     # Configure CORS middleware
@@ -39,6 +41,7 @@ def create_app() -> FastAPI:
     
     add_logging_middleware(application)
     application.include_router(solve_router, prefix="/api")
+    application.include_router(health_router, prefix="/api")
     return application
 
 
