@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.solve_routes import router as solve_router
 from app.routes.health_routes import router as health_router
+from app.routes.blog_routes import router as blog_router
+from app.routes.admin_routes import router as admin_router
 from app.services.openai_service import init_openai_client, shutdown_openai_client
 from app.middleware.logging import add_logging_middleware
 
@@ -42,6 +44,8 @@ def create_app() -> FastAPI:
     add_logging_middleware(application)
     application.include_router(solve_router, prefix="/api")
     application.include_router(health_router, prefix="/api")
+    application.include_router(blog_router, prefix="/api")
+    application.include_router(admin_router, prefix="/api")
     return application
 
 
