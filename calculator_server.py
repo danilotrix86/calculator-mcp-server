@@ -3,7 +3,11 @@ import argparse
 import math
 import numpy as np
 from scipy import stats
-from sympy import symbols, solve, sympify, diff, integrate, oo, Sum
+from sympy import (
+    symbols, solve, sympify, diff, integrate, oo, Sum, 
+    limit as sympy_limit, S, apart, simplify as sympy_simplify,
+    series, Eq
+)
 from typing import List, Tuple
 import matplotlib.pyplot as plt
 import sympy as sp
@@ -275,6 +279,312 @@ def integrate(expression: str, variable: str = "x") -> dict:
         expr = sympify(normalize_expression(expression, variable=variable))
         result = sympy_integrate(expr, var)  # Use sympy_integrate instead of integrate
         return {"result": str(result)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
+def definite_integral(expression: str, variable: str = "x", lower_bound: str = "0", upper_bound: str = "1") -> dict:
+    """
+    Computes the definite integral of a mathematical expression over an interval.
+
+    Supports polynomials, trigonometric functions, exponential functions,
+    logarithms, and other functions supported by SymPy. Supports infinite bounds
+    using 'inf' or '-inf'.
+
+    Args:
+        expression: The mathematical expression to integrate as a string.
+                   Examples: "x**2", "sin(x)", "exp(-x**2)"
+        variable: The variable with respect to which to integrate. Default is "x".
+        lower_bound: The lower bound of integration. Can be a number or 'inf'/'-inf'.
+        upper_bound: The upper bound of integration. Can be a number or 'inf'/'-inf'.
+
+    Returns:
+        On success: {"result": <definite integral value as string>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> definite_integral("x**2", "x", "0", "1")
+        {'result': '1/3'}
+        >>> definite_integral("sin(x)", "x", "0", "pi")
+        {'result': '2'}
+        >>> definite_integral("exp(-x)", "x", "0", "inf")
+        {'result': '1'}
+
+    Notes:
+        - For improper integrals, use 'inf' or '-inf' as bounds
+        - The result may be symbolic if it cannot be simplified to a number
+    """
+    try:
+        var = symbols(variable)
+        expr = sympify(normalize_expression(expression, variable=variable))
+        
+        # Parse bounds - handle infinity
+        def parse_bound(b):
+            b_str = str(b).strip().lower()
+            if b_str == 'inf' or b_str == '+inf' or b_str == 'infinity':
+                return oo
+            elif b_str == '-inf' or b_str == '-infinity':
+                return -oo
+            else:
+                return sympify(b_str)
+        
+        lower = parse_bound(lower_bound)
+        upper = parse_bound(upper_bound)
+        
+        result = sympy_integrate(expr, (var, lower, upper))
+        return {"result": str(result)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
+def compute_limit(expression: str, variable: str = "x", point: str = "0", direction: str = "") -> dict:
+    """
+    Computes the limit of a mathematical expression as a variable approaches a point.
+
+    Supports one-sided limits (from left or right) and limits at infinity.
+
+    Args:
+        expression: The mathematical expression as a string.
+                   Examples: "sin(x)/x", "(1+1/x)**x", "1/x"
+        variable: The variable for the limit. Default is "x".
+        point: The point to approach. Can be a number, 'inf', or '-inf'.
+        direction: Direction of approach. Use '+' for right-hand limit,
+                  '-' for left-hand limit, or '' for two-sided limit.
+
+    Returns:
+        On success: {"result": <limit value as string>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> compute_limit("sin(x)/x", "x", "0")
+        {'result': '1'}
+        >>> compute_limit("(1+1/x)**x", "x", "inf")
+        {'result': 'E'}
+        >>> compute_limit("1/x", "x", "0", "+")
+        {'result': 'oo'}
+        >>> compute_limit("1/x", "x", "0", "-")
+        {'result': '-oo'}
+
+    Notes:
+        - For infinity, use 'inf' or '-inf'
+        - Direction '+' means approaching from the right (x → a⁺)
+        - Direction '-' means approaching from the left (x → a⁻)
+        - Empty direction '' means two-sided limit
+    """
+    try:
+        var = symbols(variable)
+        expr = sympify(normalize_expression(expression, variable=variable))
+        
+        # Parse the point - handle infinity
+        point_str = str(point).strip().lower()
+        if point_str == 'inf' or point_str == '+inf' or point_str == 'infinity':
+            point_val = oo
+        elif point_str == '-inf' or point_str == '-infinity':
+            point_val = -oo
+        else:
+            point_val = sympify(point_str)
+        
+        # Compute limit with optional direction
+        if direction == '+':
+            result = sympy_limit(expr, var, point_val, '+')
+        elif direction == '-':
+            result = sympy_limit(expr, var, point_val, '-')
+        else:
+            result = sympy_limit(expr, var, point_val)
+        
+        return {"result": str(result)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
+def partial_fractions(expression: str, variable: str = "x") -> dict:
+    """
+    Performs partial fraction decomposition on a rational expression.
+
+    Decomposes a rational function into a sum of simpler fractions.
+
+    Args:
+        expression: The rational expression to decompose as a string.
+                   Examples: "1/(x**2-1)", "(x+1)/(x**2+3*x+2)", "1/(x**3-x)"
+        variable: The variable in the expression. Default is "x".
+
+    Returns:
+        On success: {"result": <decomposed expression as string>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> partial_fractions("1/(x**2-1)")
+        {'result': '-1/(2*(x + 1)) + 1/(2*(x - 1))'}
+        >>> partial_fractions("(x+1)/(x**2+3*x+2)")
+        {'result': '2/(x + 2) - 1/(x + 1)'}
+
+    Notes:
+        - The input must be a rational expression (polynomial/polynomial)
+        - The result is fully decomposed into partial fractions
+    """
+    try:
+        var = symbols(variable)
+        expr = sympify(normalize_expression(expression, variable=variable))
+        result = apart(expr, var)
+        return {"result": str(result)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
+def simplify_expression(expression: str) -> dict:
+    """
+    Simplifies a mathematical expression to its simplest form.
+
+    Applies various algebraic simplification rules including
+    combining like terms, reducing fractions, and simplifying
+    trigonometric expressions.
+
+    Args:
+        expression: The expression to simplify as a string.
+                   Examples: "(x**2-1)/(x-1)", "sin(x)**2 + cos(x)**2"
+
+    Returns:
+        On success: {"result": <simplified expression as string>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> simplify_expression("(x**2-1)/(x-1)")
+        {'result': 'x + 1'}
+        >>> simplify_expression("sin(x)**2 + cos(x)**2")
+        {'result': '1'}
+        >>> simplify_expression("(a+b)**2 - a**2 - 2*a*b - b**2")
+        {'result': '0'}
+
+    Notes:
+        - Uses SymPy's simplify function which applies multiple strategies
+        - May not always find the "simplest" form for complex expressions
+    """
+    try:
+        expr = sympify(normalize_expression(expression))
+        result = sympy_simplify(expr)
+        return {"result": str(result)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
+def taylor_series(expression: str, variable: str = "x", point: str = "0", order: int = 6) -> dict:
+    """
+    Computes the Taylor series expansion of an expression around a point.
+
+    Args:
+        expression: The expression to expand as a string.
+                   Examples: "sin(x)", "exp(x)", "log(1+x)", "1/(1-x)"
+        variable: The variable for the expansion. Default is "x".
+        point: The point around which to expand. Default is "0" (Maclaurin series).
+        order: The number of terms to compute. Default is 6.
+
+    Returns:
+        On success: {"result": <Taylor series as string>, "terms": <list of terms>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> taylor_series("sin(x)", "x", "0", 5)
+        {'result': 'x - x**3/6 + x**5/120 + O(x**6)', 'terms': ['x', '-x**3/6', 'x**5/120']}
+        >>> taylor_series("exp(x)", "x", "0", 4)
+        {'result': '1 + x + x**2/2 + x**3/6 + O(x**4)', 'terms': ['1', 'x', 'x**2/2', 'x**3/6']}
+
+    Notes:
+        - When point is 0, this is the Maclaurin series
+        - The O(...) term represents the order of the remainder
+    """
+    try:
+        var = symbols(variable)
+        expr = sympify(normalize_expression(expression, variable=variable))
+        point_val = sympify(str(point))
+        
+        # Compute Taylor series
+        taylor = series(expr, var, point_val, order)
+        
+        # Remove the O(...) term to get just the polynomial part
+        taylor_poly = taylor.removeO()
+        
+        # Get individual terms
+        terms = []
+        if taylor_poly.is_Add:
+            terms = [str(term) for term in taylor_poly.as_ordered_terms()]
+        else:
+            terms = [str(taylor_poly)]
+        
+        return {
+            "result": str(taylor),
+            "polynomial": str(taylor_poly),
+            "terms": terms
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
+def solve_system(equations: List[str], variables: List[str] = None) -> dict:
+    """
+    Solves a system of equations for multiple variables.
+
+    Args:
+        equations: List of equations as strings. Each equation should contain '='.
+                  Examples: ["x + y = 5", "x - y = 1"]
+        variables: Optional list of variable names to solve for.
+                  If not provided, variables are auto-detected.
+
+    Returns:
+        On success: {"solutions": <dict or list of solutions>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> solve_system(["x + y = 5", "x - y = 1"])
+        {'solutions': '{x: 3, y: 2}'}
+        >>> solve_system(["x + y + z = 6", "x - y = 0", "y + z = 4"])
+        {'solutions': '{x: 2, y: 2, z: 2}'}
+        >>> solve_system(["x**2 + y**2 = 25", "x = y"])
+        {'solutions': '[(-5*sqrt(2)/2, -5*sqrt(2)/2), (5*sqrt(2)/2, 5*sqrt(2)/2)]'}
+
+    Notes:
+        - Equations must contain exactly one '=' sign
+        - Supports linear and nonlinear systems
+        - For systems with no solution, returns empty result
+    """
+    try:
+        # Parse equations
+        sympy_eqs = []
+        detected_vars = set()
+        
+        for eq_str in equations:
+            eq_str = normalize_expression(eq_str)
+            parts = eq_str.split('=')
+            if len(parts) != 2:
+                return {"error": f"Invalid equation format: {eq_str}. Each equation must contain exactly one '=' sign."}
+            
+            left = sympify(parts[0].strip())
+            right = sympify(parts[1].strip())
+            sympy_eqs.append(Eq(left, right))
+            
+            # Detect variables
+            detected_vars.update(left.free_symbols)
+            detected_vars.update(right.free_symbols)
+        
+        # Use provided variables or detected ones
+        if variables:
+            solve_vars = [symbols(v) for v in variables]
+        else:
+            solve_vars = list(detected_vars)
+        
+        # Solve the system
+        solutions = solve(sympy_eqs, solve_vars, dict=True)
+        
+        if not solutions:
+            # Try without dict=True for systems that return tuples
+            solutions = solve(sympy_eqs, solve_vars)
+        
+        return {"solutions": str(solutions)}
     except Exception as e:
         return {"error": str(e)}
 

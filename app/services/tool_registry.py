@@ -7,6 +7,12 @@ from calculator_server import (
     solve_equation,
     differentiate,
     integrate,
+    definite_integral,
+    compute_limit,
+    partial_fractions,
+    simplify_expression,
+    taylor_series,
+    solve_system,
     mean,
     variance,
     standard_deviation,
@@ -75,7 +81,7 @@ def get_tools_for_openai() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "integrate",
-                "description": "Integrate an expression.",
+                "description": "Integrate an expression (indefinite integral).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -86,7 +92,110 @@ def get_tools_for_openai() -> List[Dict[str, Any]]:
                 },
             },
         },
-        # Stats and matrix/vector tools shortened for brevity but included
+        {
+            "type": "function",
+            "function": {
+                "name": "definite_integral",
+                "description": "Compute definite integral of an expression over an interval. Supports infinite bounds using 'inf' or '-inf'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string", "description": "The expression to integrate"},
+                        "variable": {"type": "string", "default": "x"},
+                        "lower_bound": {"type": "string", "description": "Lower bound (number or 'inf'/'-inf')"},
+                        "upper_bound": {"type": "string", "description": "Upper bound (number or 'inf'/'-inf')"},
+                    },
+                    "required": ["expression", "lower_bound", "upper_bound"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "compute_limit",
+                "description": "Compute the limit of an expression as variable approaches a point. Use '+' or '-' for one-sided limits.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string", "description": "The expression to take the limit of"},
+                        "variable": {"type": "string", "default": "x"},
+                        "point": {"type": "string", "description": "The point to approach (number or 'inf'/'-inf')"},
+                        "direction": {"type": "string", "description": "Direction: '+' for right, '-' for left, '' for two-sided", "default": ""},
+                    },
+                    "required": ["expression", "point"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "partial_fractions",
+                "description": "Perform partial fraction decomposition on a rational expression. Decomposes into sum of simpler fractions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string", "description": "The rational expression to decompose, e.g., '1/(x^2-1)'"},
+                        "variable": {"type": "string", "default": "x"},
+                    },
+                    "required": ["expression"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "simplify_expression",
+                "description": "Simplify a mathematical expression to its simplest form. Combines like terms, reduces fractions, simplifies trig.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string", "description": "The expression to simplify, e.g., '(x^2-1)/(x-1)' or 'sin(x)^2 + cos(x)^2'"},
+                    },
+                    "required": ["expression"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "taylor_series",
+                "description": "Compute Taylor series expansion of an expression around a point. Default is Maclaurin series (around 0).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string", "description": "The expression to expand, e.g., 'sin(x)', 'exp(x)'"},
+                        "variable": {"type": "string", "default": "x"},
+                        "point": {"type": "string", "description": "The point around which to expand (default: 0)", "default": "0"},
+                        "order": {"type": "integer", "description": "Number of terms in the expansion", "default": 6},
+                    },
+                    "required": ["expression"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "solve_system",
+                "description": "Solve a system of equations. Provide list of equations with '=' sign.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "equations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of equations, e.g., ['x + y = 5', 'x - y = 1']"
+                        },
+                        "variables": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional list of variables to solve for",
+                        },
+                    },
+                    "required": ["equations"],
+                },
+            },
+        },
+        # Stats and matrix/vector tools
         {
             "type": "function",
             "function": {
@@ -334,6 +443,12 @@ _EXECUTORS = {
     "solve_equation": solve_equation,
     "differentiate": differentiate,
     "integrate": integrate,
+    "definite_integral": definite_integral,
+    "compute_limit": compute_limit,
+    "partial_fractions": partial_fractions,
+    "simplify_expression": simplify_expression,
+    "taylor_series": taylor_series,
+    "solve_system": solve_system,
     "mean": mean,
     "variance": variance,
     "standard_deviation": standard_deviation,
@@ -365,14 +480,15 @@ async def execute_tool_call(name: Optional[str], args_json: str) -> str:
     except Exception as exc:
         return json.dumps({"error": f"Invalid arguments JSON: {exc}"})
     try:
-        logging.info("tool_call %s %s", name, parsed)
+        logging.info("🧮 EXECUTING CALCULATION: %s with args: %s", name, parsed)
         result = func(**parsed)
         result_json = json.dumps(result)
-        logging.info("tool_result %s %s", name, result)
+        logging.info("🧮 CALCULATION RESULT from %s: %s", name, result)
+        logging.info("🧮 This result comes from SymPy/NumPy/SciPy, NOT from LLM inference!")
         return result_json
     except Exception as exc:
         error_result = {"error": str(exc)}
-        logging.info("tool_error %s %s", name, error_result)
+        logging.error("🧮 CALCULATION ERROR in %s: %s", name, error_result)
         return json.dumps(error_result)
 
 
