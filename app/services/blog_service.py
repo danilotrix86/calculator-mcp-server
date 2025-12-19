@@ -219,3 +219,6 @@ async def search_posts(query: str, limit: int = 20) -> List[Dict[str, Any]]:
         logging.error(f"Error searching posts: {str(e)}")
         return []
 
+
+
+
