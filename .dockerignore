@@ -17,3 +17,15 @@ dist/
 .env
 **/.DS_Store
 **/Thumbs.db
+
+# Node/Web - not needed in Python backend
+node_modules/
+web/node_modules/
+web/dist/
+web/.vite/
+*.lock
+package-lock.json
+
+# Docs
+docs/
+*.md

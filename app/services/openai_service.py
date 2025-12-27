@@ -162,6 +162,7 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
                 "All mathematical expressions must be formatted in LaTeX syntax within markdown. For example: use $x^2$ for powers, $\\sin(x)$ for functions, $\\frac{a}{b}$ for fractions, etc. "
                 "Always wrap expressions in `$…$` for inline math or `$$…$$` for displayed equations. "
                 "After the detailed explanation, clearly present the final numeric or symbolic result. Ensure the process is fully understandable and reproducible. use the language of the problem for the final answer."
+                "ALWAYS USE ITALIAN LANGUAGE FOR THE THE STEP BY STEP EXPLANATION AND THE FINAL ANSWER."
             )
         },
         {"role": "user", "content": query_text},
@@ -185,19 +186,13 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
     tool_args_str = tool.get("function", {}).get("arguments", "{}")
 
     # Execute tool
-    logging.info("=" * 60)
-    logging.info("🔧 TOOL EXECUTION START")
-    logging.info("Tool name: %s", tool_name)
-    logging.info("Tool args: %s", tool_args_str)
-    
     exec_result = await execute_tool_call(tool_name, tool_args_str)
     
     try:
         parsed_result = json.loads(exec_result)
-        logging.info("✅ TOOL RESULT (parsed): %s", parsed_result)
+        logging.info("Tool result: %s", parsed_result)
     except Exception as e:
-        logging.info("✅ TOOL RESULT (raw): %s", exec_result)
-    logging.info("=" * 60)
+        logging.info("Tool result (raw): %s", exec_result)
 
     # Provide tool result back to the model
     messages.append({
@@ -219,26 +214,6 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
     final_choice = (second.get("choices") or [{}])[0]
     final_msg = final_choice.get("message", {})
     final_content = final_msg.get("content") or ""
-
-    logging.info("=" * 60)
-    logging.info("📝 FINAL RESPONSE ANALYSIS")
-    logging.info("Tool used: %s", tool_name)
-    logging.info("Tool result was: %s", exec_result[:200] if exec_result else "None")
-    logging.info("Model's final answer (first 500 chars): %s", final_content[:500] if final_content else "EMPTY")
-    
-    # Check if tool result appears in final answer
-    try:
-        parsed_tool_result = json.loads(exec_result or "{}")
-        result_value = parsed_tool_result.get("result") or parsed_tool_result.get("solutions")
-        if result_value and str(result_value) in final_content:
-            logging.info("✅ VERIFICATION: Tool result '%s' FOUND in final answer", result_value)
-        elif result_value:
-            logging.info("⚠️ VERIFICATION: Tool result '%s' NOT directly found in final answer", result_value)
-        else:
-            logging.info("ℹ️ VERIFICATION: Could not extract simple result value from tool output")
-    except Exception as e:
-        logging.info("⚠️ VERIFICATION: Could not parse tool result for comparison: %s", e)
-    logging.info("=" * 60)
 
     # Fallback: if model produced no final text, surface the tool result directly
     if not final_content:
@@ -325,12 +300,6 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
         tool_args_str = tool.get("function", {}).get("arguments", "{}")
         
         # Notify that we're calling a tool
-        logging.info("=" * 60)
-        logging.info("🔧 STREAMING TOOL EXECUTION START")
-        logging.info("Tool name: %s", tool_name)
-        logging.info("Tool ID: %s", tool_id)
-        logging.info("Tool args: %s", tool_args_str)
-        
         yield json.dumps({
             "type": "tool_call", 
             "tool": tool_name, 
@@ -344,12 +313,11 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
         # Notify of tool result
         try:
             parsed_result = json.loads(exec_result)
-            logging.info("✅ STREAMING TOOL RESULT: %s", parsed_result)
+            logging.info(f"Streaming tool result for {tool_name} ({tool_id}): {parsed_result}")
             yield json.dumps({"type": "tool_result", "tool_id": tool_id, "result": parsed_result})
         except Exception as e:
-            logging.info("✅ STREAMING TOOL RESULT (raw): %s", exec_result)
+            logging.info(f"Streaming tool result (raw) for {tool_name} ({tool_id}): {exec_result}")
             yield json.dumps({"type": "tool_result", "tool_id": tool_id, "result": exec_result})
-        logging.info("=" * 60)
 
         # Add tool response message for this specific tool call
         messages.append({
@@ -360,9 +328,6 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
         })
 
     # Stream the final response
-    logging.info("=" * 60)
-    logging.info("📝 STREAMING FINAL RESPONSE - Model will now explain the tool result")
-    
     second_response = await _chat_once(
         messages, 
         api_key_override=api_key_override, 
@@ -392,10 +357,6 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
                     yield json.dumps({"type": "content_chunk", "content": content_chunk})
             
             # Send final complete message
-            logging.info("=" * 60)
-            logging.info("📝 STREAMING COMPLETE - Final answer length: %d chars", len(buffer))
-            logging.info("Final answer (first 500 chars): %s", buffer[:500] if buffer else "EMPTY")
-            logging.info("=" * 60)
             yield json.dumps({"type": "content_complete", "content": buffer})
     except Exception as e:
         logging.error(f"Error in streaming response: {str(e)}")
