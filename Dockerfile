@@ -1,34 +1,23 @@
 # syntax=docker/dockerfile:1
-
-# 1. Builder Stage: Install all dependencies, including dev tools
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
     MPLBACKEND=Agg
 
 WORKDIR /app
 
-# Create a virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install all dependencies from requirements.txt into the venv
+# Install dependencies first for better layer caching
 COPY requirements.txt ./
 RUN python -m pip install --upgrade pip \
     && pip install -r requirements.txt
 
-# 2. Final Stage: Copy only the necessary files
-FROM python:3.11-slim AS final
-COPY --from=builder /opt/venv /opt/venv
-
 # Copy application code
-WORKDIR /app
 COPY . .
 
-# Set path to use the virtual environment
-ENV PATH="/opt/venv/bin:$PATH"
+# Cloud Run provides $PORT; default to 8080 for local runs
 ENV PORT=8080
 
 # Start the FastAPI server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
