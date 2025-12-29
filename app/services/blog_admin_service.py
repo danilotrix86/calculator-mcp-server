@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from app.services.supabase_service import supabase
 
@@ -159,12 +158,6 @@ async def create_post(data: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("Supabase client not initialized")
     
     try:
-        # Handle published_at field based on published status
-        if data.get("published"):
-            data["published_at"] = datetime.now(timezone.utc).isoformat()
-        else:
-            data["published_at"] = None
-        
         logging.info(f"Creating post with data: {data}")
         result = supabase.table("blog_posts") \
             .insert(data) \
@@ -183,21 +176,6 @@ async def update_post(post_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("Supabase client not initialized")
     
     try:
-        # Handle published_at field based on published status
-        if "published" in data:
-            if data["published"]:
-                # Only set published_at if it's being published for the first time
-                # Check if already has published_at
-                existing = supabase.table("blog_posts") \
-                    .select("published_at") \
-                    .eq("id", post_id) \
-                    .single() \
-                    .execute()
-                if existing.data and not existing.data.get("published_at"):
-                    data["published_at"] = datetime.now(timezone.utc).isoformat()
-            else:
-                data["published_at"] = None
-        
         logging.info(f"Updating post {post_id} with data: {data}")
         # Update the post
         supabase.table("blog_posts") \
