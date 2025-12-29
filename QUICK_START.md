@@ -69,3 +69,4 @@ gcloud run services logs read calculator-mcp-server --region us-central1
 
 See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for comprehensive instructions.
 
+

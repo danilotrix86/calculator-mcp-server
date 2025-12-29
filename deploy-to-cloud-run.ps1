@@ -61,27 +61,64 @@ gcloud services enable cloudbuild.googleapis.com --quiet
 gcloud services enable run.googleapis.com --quiet
 gcloud services enable containerregistry.googleapis.com --quiet
 
-# Ask about environment variables
+# Function to read .env file
+function Read-EnvFile {
+    param([string]$FilePath)
+    
+    $envVars = @{}
+    if (Test-Path $FilePath) {
+        Write-Host "Reading environment variables from .env file..." -ForegroundColor Green
+        $lines = Get-Content $FilePath
+        
+        foreach ($line in $lines) {
+            # Skip empty lines and comments
+            $trimmedLine = $line.Trim()
+            if ($trimmedLine -eq "" -or $trimmedLine.StartsWith("#")) {
+                continue
+            }
+            
+            # Parse KEY=VALUE format
+            if ($trimmedLine -match '^([^=]+)=(.*)$') {
+                $key = $matches[1].Trim()
+                $value = $matches[2].Trim()
+                
+                # Remove quotes if present
+                if ($value.StartsWith('"') -and $value.EndsWith('"')) {
+                    $value = $value.Substring(1, $value.Length - 2)
+                } elseif ($value.StartsWith("'") -and $value.EndsWith("'")) {
+                    $value = $value.Substring(1, $value.Length - 2)
+                }
+                
+                $envVars[$key] = $value
+            }
+        }
+    } else {
+        Write-Host ".env file not found. Skipping environment variables." -ForegroundColor Yellow
+    }
+    
+    return $envVars
+}
+
+# Read environment variables from .env file
 Write-Host ""
 Write-Host "Environment Variables Configuration:" -ForegroundColor Yellow
-$setEnv = Read-Host "Do you want to set environment variables? (y/n)"
+$envFile = Join-Path (Get-Location) ".env"
+$envDict = Read-EnvFile -FilePath $envFile
 
 $envVars = @()
-if ($setEnv -eq "y") {
-    $supabaseUrl = Read-Host "SUPABASE_URL (optional, press Enter to skip)"
-    $supabaseKey = Read-Host "SUPABASE_KEY (optional, press Enter to skip)"
-    $adminUsername = Read-Host "ADMIN_USERNAME (optional, press Enter to skip)"
-    $adminPassword = Read-Host "ADMIN_PASSWORD (optional, press Enter to skip)"
-    $openaiKey = Read-Host "OPENAI_API_KEY (optional, press Enter to skip)"
-    $openaiModel = Read-Host "OPENAI_MODEL (optional, press Enter to skip)"
-    
-    if ($supabaseUrl) { $envVars += "SUPABASE_URL=$supabaseUrl" }
-    if ($supabaseKey) { $envVars += "SUPABASE_KEY=$supabaseKey" }
-    if ($adminUsername) { $envVars += "ADMIN_USERNAME=$adminUsername" }
-    if ($adminPassword) { $envVars += "ADMIN_PASSWORD=$adminPassword" }
-    if ($openaiKey) { $envVars += "OPENAI_API_KEY=$openaiKey" }
-    if ($openaiModel) { $envVars += "OPENAI_MODEL=$openaiModel" }
-    
+$envVarNames = @("SUPABASE_URL", "SUPABASE_KEY", "ADMIN_USERNAME", "ADMIN_PASSWORD", "OPENAI_API_KEY", "OPENAI_MODEL", "CLOUD_RUN_URL")
+
+foreach ($varName in $envVarNames) {
+    if ($envDict.ContainsKey($varName) -and $envDict[$varName]) {
+        $envVars += "$varName=$($envDict[$varName])"
+        Write-Host "  Found: $varName" -ForegroundColor Green
+    }
+}
+
+if ($envVars.Count -eq 0) {
+    Write-Host "  No environment variables found in .env file." -ForegroundColor Yellow
+} else {
+    Write-Host "  Total environment variables: $($envVars.Count)" -ForegroundColor Green
 }
 
 # Build deployment command - we'll construct it as a string to avoid array expansion issues

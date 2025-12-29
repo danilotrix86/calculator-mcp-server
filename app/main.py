@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, List
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,14 @@ def create_app() -> FastAPI:
         "https://risolutorematematico.it",
         "https://www.risolutorematematico.it",
     ]
+    
+    # Add Cloud Run service URL if provided via environment variable
+    cloud_run_url = os.environ.get("CLOUD_RUN_URL")
+    if cloud_run_url:
+        origins.append(cloud_run_url)
+    
+    # Also add the specific Cloud Run URL (can be removed if using env var)
+    origins.append("https://rismat-979168412861.europe-west1.run.app")
     
     application.add_middleware(
         CORSMiddleware,
