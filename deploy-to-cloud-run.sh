@@ -149,3 +149,4 @@ echo -e "  ${YELLOW}curl $SERVICE_URL/api/health${NC}"
 
 
 
+
