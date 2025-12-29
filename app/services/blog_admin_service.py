@@ -153,10 +153,10 @@ async def get_post_by_id(post_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def create_post(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def create_post(data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new post."""
     if not supabase:
-        return None
+        raise ValueError("Supabase client not initialized")
     
     try:
         # Handle published_at field based on published status
@@ -165,19 +165,22 @@ async def create_post(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         else:
             data["published_at"] = None
         
+        logging.info(f"Creating post with data: {data}")
         result = supabase.table("blog_posts") \
             .insert(data) \
             .execute()
-        return result.data[0] if result.data else None
+        if not result.data:
+            raise ValueError("No data returned from insert")
+        return result.data[0]
     except Exception as e:
         logging.error(f"Error creating post: {str(e)}")
-        return None
+        raise
 
 
-async def update_post(post_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def update_post(post_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Update a post."""
     if not supabase:
-        return None
+        raise ValueError("Supabase client not initialized")
     
     try:
         # Handle published_at field based on published status
@@ -195,6 +198,7 @@ async def update_post(post_id: str, data: Dict[str, Any]) -> Optional[Dict[str, 
             else:
                 data["published_at"] = None
         
+        logging.info(f"Updating post {post_id} with data: {data}")
         # Update the post
         supabase.table("blog_posts") \
             .update(data) \
@@ -207,10 +211,12 @@ async def update_post(post_id: str, data: Dict[str, Any]) -> Optional[Dict[str, 
             .eq("id", post_id) \
             .single() \
             .execute()
+        if not result.data:
+            raise ValueError("Post not found after update")
         return result.data
     except Exception as e:
         logging.error(f"Error updating post: {str(e)}")
-        return None
+        raise
 
 
 async def delete_post(post_id: str) -> bool:

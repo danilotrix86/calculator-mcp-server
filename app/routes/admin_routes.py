@@ -151,20 +151,26 @@ async def get_post(post_id: str, username: str = Depends(verify_admin)):
 @router.post("/posts")
 async def create_post(data: PostCreate, username: str = Depends(verify_admin)):
     """Create a new post."""
-    post = await blog_admin_service.create_post(data.model_dump())
-    if not post:
-        raise HTTPException(status_code=500, detail="Failed to create post")
-    return {"post": post}
+    try:
+        post = await blog_admin_service.create_post(data.model_dump())
+        return {"post": post}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create post: {str(e)}")
 
 
 @router.put("/posts/{post_id}")
 async def update_post(post_id: str, data: PostUpdate, username: str = Depends(verify_admin)):
     """Update a post."""
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    post = await blog_admin_service.update_post(post_id, update_data)
-    if not post:
-        raise HTTPException(status_code=500, detail="Failed to update post")
-    return {"post": post}
+    try:
+        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        post = await blog_admin_service.update_post(post_id, update_data)
+        return {"post": post}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update post: {str(e)}")
 
 
 @router.delete("/posts/{post_id}")
