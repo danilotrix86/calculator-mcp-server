@@ -9,6 +9,7 @@ router = APIRouter(tags=["sitemap"])
 STATIC_PAGES = [
     {"loc": "/", "changefreq": "daily", "priority": "1.0"},
     {"loc": "/calcolatore-scientifico", "changefreq": "monthly", "priority": "0.8"},
+    {"loc": "/calcolatore-matrici", "changefreq": "monthly", "priority": "0.8"},
     {"loc": "/grafici-funzioni", "changefreq": "monthly", "priority": "0.8"},
     {"loc": "/blog", "changefreq": "daily", "priority": "0.9"},
     {"loc": "/supportaci", "changefreq": "monthly", "priority": "0.5"},
