@@ -10,6 +10,7 @@ from app.routes.health_routes import router as health_router
 from app.routes.blog_routes import router as blog_router
 from app.routes.admin_routes import router as admin_router
 from app.routes.sitemap_routes import router as sitemap_router
+from app.routes.matrix_routes import router as matrix_router
 from app.services.openai_service import init_openai_client, shutdown_openai_client
 from app.middleware.logging import add_logging_middleware
 
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router, prefix="/api")
     application.include_router(blog_router, prefix="/api")
     application.include_router(admin_router, prefix="/api")
+    application.include_router(matrix_router, prefix="/api")
     application.include_router(sitemap_router)  # No prefix - serves at root level
     return application
 
