@@ -40,3 +40,4 @@ class MatrixPropertiesResponse(BaseModel):
     condition_number: Optional[float] = None
     error: Optional[str] = None
 
+
