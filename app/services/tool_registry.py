@@ -24,6 +24,7 @@ from calculator_server import (
     matrix_multiplication,
     matrix_transpose,
     matrix_determinant,
+    matrix_eigenvalues,
     vector_dot_product,
     vector_cross_product,
     vector_magnitude,
@@ -354,6 +355,20 @@ def get_tools_for_openai() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "matrix_eigenvalues",
+                "description": "Calculate eigenvalues (autovalori) of a square matrix. Returns all eigenvalues including complex ones.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "matrix": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+                    },
+                    "required": ["matrix"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "vector_dot_product",
                 "description": "Dot product of two vectors.",
                 "parameters": {
@@ -460,6 +475,7 @@ _EXECUTORS = {
     "matrix_multiplication": matrix_multiplication,
     "matrix_transpose": matrix_transpose,
     "matrix_determinant": matrix_determinant,
+    "matrix_eigenvalues": matrix_eigenvalues,
     "vector_dot_product": vector_dot_product,
     "vector_cross_product": vector_cross_product,
     "vector_magnitude": vector_magnitude,

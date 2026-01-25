@@ -119,6 +119,7 @@ async def extract_formula_from_image(image_data: str, api_key_override: Optional
             model="gpt-4o",  # Using GPT-4o which has vision capabilities
             messages=[
                 {
+                    "role": "system",
                     "content": MATH_VISION_SYSTEM_PROMPT
                 },
                 {

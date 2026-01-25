@@ -892,6 +892,51 @@ def matrix_determinant(matrix: List[List[float]]) -> dict:
 
 
 @app.tool()
+def matrix_eigenvalues(matrix: List[List[float]]) -> dict:
+    """
+    Computes the eigenvalues of a square matrix.
+
+    Args:
+        matrix: The matrix as a list of lists. Must be a square matrix.
+
+    Returns:
+        On success: {"result": <list of eigenvalues>, "explanation": <description>}
+        On error: {"error": <error message>}
+
+    Examples:
+        >>> matrix_eigenvalues([[1, 2], [3, 4]])
+        {'result': [5.372281323269014, -0.3722813232690143], 'explanation': 'Calculated 2 eigenvalues'}
+        >>> matrix_eigenvalues([[2, 0], [0, 3]])
+        {'result': [2.0, 3.0], 'explanation': 'Calculated 2 eigenvalues'}
+    """
+    try:
+        mat = np.array(matrix, dtype=float)
+        
+        # Check if matrix is square
+        if mat.ndim != 2 or mat.shape[0] != mat.shape[1]:
+            return {"error": "Eigenvalues require a square matrix (same number of rows and columns)"}
+        
+        eigenvalues = np.linalg.eigvals(mat)
+        
+        # Handle complex eigenvalues
+        if np.iscomplexobj(eigenvalues):
+            # Check if imaginary parts are negligible (essentially real)
+            if np.allclose(eigenvalues.imag, 0):
+                result = [float(ev.real) for ev in eigenvalues]
+            else:
+                result = [{"real": float(ev.real), "imag": float(ev.imag)} for ev in eigenvalues]
+        else:
+            result = [float(ev) for ev in eigenvalues]
+        
+        return {
+            "result": result,
+            "explanation": f"Calculated {len(eigenvalues)} eigenvalues"
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.tool()
 def vector_dot_product(vector_a: tuple[float], vector_b: tuple[float]) -> dict:
     """
     Multiplies two matrices.
