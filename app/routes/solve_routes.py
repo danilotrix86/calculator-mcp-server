@@ -84,22 +84,40 @@ async def solve_stream_endpoint(payload: SolveRequest, x_openai_api_key: str | N
         nonlocal complete_response, tool_used
         try:
             async for chunk in solve_with_openai_streaming(query_text=payload.text, api_key_override=x_openai_api_key, force_tool=True):
-                # Parse the chunk to extract tool information if available
+                # Parse the chunk to extract tool information and content
                 try:
                     chunk_data = json.loads(chunk)
-                    if "tool_called" in chunk_data:
-                        tool_used = chunk_data["tool_called"]
-                    if "content" in chunk_data:
-                        complete_response.append(chunk_data.get("content", ""))
+                    chunk_type = chunk_data.get("type", "")
+                    
+                    # Track tool usage
+                    if chunk_type == "tool_call":
+                        tool_used = chunk_data.get("tool")
+                    
+                    # Only capture actual text content for caching
+                    if chunk_type == "content_chunk":
+                        content = chunk_data.get("content", "")
+                        if content:
+                            complete_response.append(content)
+                    elif chunk_type == "content":
+                        # Direct content (non-streaming response)
+                        content = chunk_data.get("content", "")
+                        if content:
+                            complete_response.append(content)
+                    elif chunk_type == "content_complete":
+                        # Final content from content_complete (has full buffer)
+                        content = chunk_data.get("content", "")
+                        if content and not complete_response:
+                            # Only use if we haven't accumulated chunks
+                            complete_response.append(content)
                 except (json.JSONDecodeError, TypeError):
-                    # If not JSON or doesn't have content, store the raw chunk
-                    complete_response.append(chunk)
+                    # Skip chunks that can't be parsed as JSON
+                    pass
                 
                 yield f"data: {chunk}\n\n"
                 
             # After streaming is complete, update Supabase with the complete response
             if query_id:
-                final_response = "".join([str(chunk) for chunk in complete_response if chunk])
+                final_response = "".join(complete_response)
                 await supabase_service.update_query_response(query_id, final_response, tool_used)
         except Exception as e:
             error_msg = f"Error in streaming: {str(e)}"
@@ -175,22 +193,36 @@ async def solve_image_endpoint(payload: SolveImageRequest, x_openai_api_key: str
             try:
                 generator = solve_with_openai_streaming(query_text=query, api_key_override=x_openai_api_key, force_tool=True)
                 async for chunk in generator:
-                    # Parse the chunk to extract tool information if available
+                    # Parse the chunk to extract tool information and content
                     try:
                         chunk_data = json.loads(chunk)
-                        if "tool_called" in chunk_data:
-                            tool_used = chunk_data["tool_called"]
-                        if "content" in chunk_data:
-                            complete_response.append(chunk_data.get("content", ""))
+                        chunk_type = chunk_data.get("type", "")
+                        
+                        # Track tool usage
+                        if chunk_type == "tool_call":
+                            tool_used = chunk_data.get("tool")
+                        
+                        # Only capture actual text content for caching
+                        if chunk_type == "content_chunk":
+                            content = chunk_data.get("content", "")
+                            if content:
+                                complete_response.append(content)
+                        elif chunk_type == "content":
+                            content = chunk_data.get("content", "")
+                            if content:
+                                complete_response.append(content)
+                        elif chunk_type == "content_complete":
+                            content = chunk_data.get("content", "")
+                            if content and not complete_response:
+                                complete_response.append(content)
                     except (json.JSONDecodeError, TypeError):
-                        # If not JSON or doesn't have content, store the raw chunk
-                        complete_response.append(chunk)
+                        pass
                     
                     yield f"data: {chunk}\n\n"
                 
                 # After streaming is complete, update Supabase with the complete response
                 if query_id:
-                    final_response = "".join([str(chunk) for chunk in complete_response if chunk])
+                    final_response = "".join(complete_response)
                     await supabase_service.update_query_response(query_id, final_response, tool_used)
                         
             except Exception as e:
