@@ -130,3 +130,42 @@ async def update_query_error(query_id: str, error_message: str) -> bool:
     except Exception as e:
         logging.error(f"Error updating Supabase with error response: {str(e)}")
         return False
+
+
+async def find_cached_response(question: str) -> Optional[Dict[str, Any]]:
+    """
+    Find a cached response for the given question.
+    
+    Args:
+        question: The user's question/query
+        
+    Returns:
+        The cached row data if found, None otherwise
+    """
+    if not supabase:
+        return None
+    
+    try:
+        logging.info(f"Checking cache for query: {question[:50]}...")
+        
+        # Get recent queries matching the question
+        # Fetch a few to ensure we find a successful one if the latest was an error
+        result = supabase.table("user_queries").select("*").eq("question", question).order("created_at", desc=True).limit(5).execute()
+        
+        if result.data:
+            logging.info(f"Found {len(result.data)} potential cache matches")
+            for row in result.data:
+                response = row.get("response")
+                # Check if response exists and is not an error
+                if response and not str(response).strip() == "" and not str(response).startswith("Error:"):
+                    logging.info(f"Cache hit! Using query ID: {row['id']}")
+                    return row
+            
+            logging.info("No valid successful response found in recent matches")
+            return None
+            
+        logging.info("No cache matches found")
+        return None
+    except Exception as e:
+        logging.error(f"Error finding cached response: {str(e)}")
+        return None

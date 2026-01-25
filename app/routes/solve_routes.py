@@ -49,6 +49,30 @@ async def solve_stream_endpoint(payload: SolveRequest, x_openai_api_key: str | N
     """Stream the solution as it's being generated"""
     logging.info("Processing streaming solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
     
+    # Check for cached response
+    cached = await supabase_service.find_cached_response(payload.text)
+    if cached:
+        logging.info("Found cached response for query: %s", payload.text[:50])
+        
+        async def cached_generator() -> AsyncIterator[str]:
+            tool_used = cached.get("tool_used")
+            response_text = cached.get("response", "")
+            
+            # Notify about tool usage if applicable (informative)
+            if tool_used:
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_used, 'tool_id': 'cached', 'args': {}})}\n\n"
+                # Small delay to ensure order?
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool_id': 'cached', 'result': 'Restored from database'})}\n\n"
+            
+            # Send the full content
+            yield f"data: {json.dumps({'type': 'content', 'content': response_text})}\n\n"
+            yield f"data: {json.dumps({'type': 'content_complete'})}\n\n"
+
+        return StreamingResponse(
+            cached_generator(),
+            media_type="text/event-stream"
+        )
+
     # Store the question in Supabase
     query_id = await supabase_service.save_query(payload.text)
     
