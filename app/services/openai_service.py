@@ -69,8 +69,15 @@ async def _chat_once(messages: List[Dict[str, str]], api_key_override: Optional[
     tools = _build_tool_spec()
     try:
         tool_choice = "required" if force_tool else "auto"
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        
+        # Log the system prompt being used (first 200 chars)
+        system_msg = next((m for m in messages if m.get("role") == "system"), None)
+        if system_msg:
+            logging.info(f"🤖 Using model: {model}, System prompt (first 200 chars): {system_msg.get('content', '')[:200]}...")
+        
         resp = await client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            model=model,
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
@@ -339,6 +346,36 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
                     content_chunk = chunk.choices[0].delta.content
                     buffer += content_chunk
                     yield json.dumps({"type": "content_chunk", "content": content_chunk})
+            
+            # Log the full response for debugging
+            logging.info(f"📝 FULL MODEL RESPONSE (first 1500 chars):\n{buffer[:1500]}")
+            logging.info(f"📝 FULL MODEL RESPONSE LENGTH: {len(buffer)} chars")
+            
+            # Check for Unicode math symbols that should have been LaTeX
+            unicode_issues = []
+            if '√' in buffer:
+                # Find the position and context of the √ symbol
+                idx = buffer.find('√')
+                context = buffer[max(0, idx-30):min(len(buffer), idx+30)]
+                unicode_issues.append(f'√ at position {idx}, context: ...{context}...')
+            if '²' in buffer or '³' in buffer or '⁴' in buffer:
+                unicode_issues.append('superscripts (², ³, ⁴) found')
+            if '₀' in buffer or '₁' in buffer or '₂' in buffer:
+                unicode_issues.append('subscripts (₀, ₁, ₂) found')
+            
+            # Also check if $$ delimiters are present
+            if '$$' in buffer:
+                logging.info(f"✅ Found {buffer.count('$$')} $$ delimiters in response")
+            else:
+                logging.warning("⚠️ NO $$ DELIMITERS FOUND in response!")
+                
+            if '$' in buffer:
+                logging.info(f"✅ Found {buffer.count('$')} total $ characters in response")
+            else:
+                logging.warning("⚠️ NO $ DELIMITERS FOUND at all!")
+                
+            if unicode_issues:
+                logging.warning(f"⚠️ MODEL OUTPUT CONTAINS UNICODE MATH SYMBOLS: {'; '.join(unicode_issues)}")
             
             # Send final complete message
             yield json.dumps({"type": "content_complete", "content": buffer})

@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
     
     # Configure CORS middleware
     origins = [
+        "http://localhost:3000",  # Vike/Vercel dev server
         "http://localhost:5174",
         "http://localhost:5173",
         "https://risolutorematematico.it",
