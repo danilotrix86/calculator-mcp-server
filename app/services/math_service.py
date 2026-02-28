@@ -1,4 +1,3 @@
-from mcp.server.fastmcp import FastMCP
 import argparse
 import math
 import numpy as np
@@ -17,11 +16,6 @@ from sympy import integrate as sympy_integrate
 import re
 
 # Create MCP Server
-app = FastMCP(
-    name="Mathematical Calculator",
-    instructions="A server for complex mathematical calculations",
-    dependencies=["numpy", "scipy", "sympy", "matplotlib"],
-)
 
 TRANSPORT = "sse"
 
@@ -76,10 +70,14 @@ ALLOW_FUNCTION = {
 }
 
 
+from functools import lru_cache
+
+@lru_cache(maxsize=256)
 def normalize_expression(expression: str, variable: str = "x") -> str:
     """
     Normalize common user math input into SymPy-friendly syntax.
 
+    - Remove all whitespace to normalize string format for better cache hit rates
     - Replace caret power (^) with Python power (**)
     - Insert explicit multiplication where commonly omitted:
       3x -> 3*x, 2(x+1) -> 2*(x+1), (x+1)(x+2) -> (x+1)*(x+2), x(x+1) -> x*(x+1)
@@ -88,6 +86,8 @@ def normalize_expression(expression: str, variable: str = "x") -> str:
     to avoid interfering with function names like sin(x).
     """
     s = expression or ""
+    # Strip all whitespace to ensure "x + 1" and "x+1" map to same cache key
+    s = re.sub(r"\s+", "", s)
     s = s.replace("^", "**")
     var = re.escape(variable)
     # Insert * between:
@@ -104,7 +104,11 @@ def normalize_expression(expression: str, variable: str = "x") -> str:
     return s
 
 
-@app.tool()
+@lru_cache(maxsize=256)
+def parse_expression(expression: str, variable: str = "x"):
+    """Cached parsing of expressions to speed up SymPy operations"""
+    return sympify(normalize_expression(expression, variable))
+
 def calculate(expression: str) -> dict:
     """
     Evaluates a mathematical expression and returns the result.
@@ -149,7 +153,6 @@ def calculate(expression: str) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def solve_equation(equation: str) -> dict:
     """
     Solves an algebraic equation for x and returns all solutions.
@@ -187,8 +190,8 @@ def solve_equation(equation: str) -> dict:
         if len(parts) != 2:
             return {"error": "Equation must contain an '=' sign"}
 
-        left = sympify(normalize_expression(parts[0].strip()))
-        right = sympify(normalize_expression(parts[1].strip()))
+        left = parse_expression(parts[0].strip())
+        right = parse_expression(parts[1].strip())
 
         # Solve the equation
         solutions = solve(left - right, x)
@@ -197,7 +200,6 @@ def solve_equation(equation: str) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def differentiate(expression: str, variable: str = "x") -> dict:
     """
     Computes the derivative of a mathematical expression with respect to a variable.
@@ -233,14 +235,13 @@ def differentiate(expression: str, variable: str = "x") -> dict:
     """
     try:
         var = symbols(variable)
-        expr = sympify(normalize_expression(expression, variable=variable))
+        expr = parse_expression(expression, variable)
         result = diff(expr, var)
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.tool()
 def integrate(expression: str, variable: str = "x") -> dict:
     """
     Computes the indefinite integral of a mathematical expression with respect to a variable.
@@ -276,14 +277,13 @@ def integrate(expression: str, variable: str = "x") -> dict:
     """
     try:
         var = symbols(variable)
-        expr = sympify(normalize_expression(expression, variable=variable))
+        expr = parse_expression(expression, variable)
         result = sympy_integrate(expr, var)  # Use sympy_integrate instead of integrate
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.tool()
 def definite_integral(expression: str, variable: str = "x", lower_bound: str = "0", upper_bound: str = "1") -> dict:
     """
     Computes the definite integral of a mathematical expression over an interval.
@@ -317,7 +317,7 @@ def definite_integral(expression: str, variable: str = "x", lower_bound: str = "
     """
     try:
         var = symbols(variable)
-        expr = sympify(normalize_expression(expression, variable=variable))
+        expr = parse_expression(expression, variable)
         
         # Parse bounds - handle infinity
         def parse_bound(b):
@@ -338,7 +338,6 @@ def definite_integral(expression: str, variable: str = "x", lower_bound: str = "
         return {"error": str(e)}
 
 
-@app.tool()
 def compute_limit(expression: str, variable: str = "x", point: str = "0", direction: str = "") -> dict:
     """
     Computes the limit of a mathematical expression as a variable approaches a point.
@@ -375,7 +374,7 @@ def compute_limit(expression: str, variable: str = "x", point: str = "0", direct
     """
     try:
         var = symbols(variable)
-        expr = sympify(normalize_expression(expression, variable=variable))
+        expr = parse_expression(expression, variable)
         
         # Parse the point - handle infinity
         point_str = str(point).strip().lower()
@@ -399,7 +398,6 @@ def compute_limit(expression: str, variable: str = "x", point: str = "0", direct
         return {"error": str(e)}
 
 
-@app.tool()
 def partial_fractions(expression: str, variable: str = "x") -> dict:
     """
     Performs partial fraction decomposition on a rational expression.
@@ -419,7 +417,7 @@ def partial_fractions(expression: str, variable: str = "x") -> dict:
         >>> partial_fractions("1/(x**2-1)")
         {'result': '-1/(2*(x + 1)) + 1/(2*(x - 1))'}
         >>> partial_fractions("(x+1)/(x**2+3*x+2)")
-        {'result': '2/(x + 2) - 1/(x + 1)'}
+        {'result': '1/(x + 2)'}
 
     Notes:
         - The input must be a rational expression (polynomial/polynomial)
@@ -427,14 +425,13 @@ def partial_fractions(expression: str, variable: str = "x") -> dict:
     """
     try:
         var = symbols(variable)
-        expr = sympify(normalize_expression(expression, variable=variable))
+        expr = parse_expression(expression, variable)
         result = apart(expr, var)
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.tool()
 def simplify_expression(expression: str) -> dict:
     """
     Simplifies a mathematical expression to its simplest form.
@@ -464,14 +461,13 @@ def simplify_expression(expression: str) -> dict:
         - May not always find the "simplest" form for complex expressions
     """
     try:
-        expr = sympify(normalize_expression(expression))
+        expr = parse_expression(expression)
         result = sympy_simplify(expr)
         return {"result": str(result)}
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.tool()
 def taylor_series(expression: str, variable: str = "x", point: str = "0", order: int = 6) -> dict:
     """
     Computes the Taylor series expansion of an expression around a point.
@@ -489,9 +485,9 @@ def taylor_series(expression: str, variable: str = "x", point: str = "0", order:
 
     Examples:
         >>> taylor_series("sin(x)", "x", "0", 5)
-        {'result': 'x - x**3/6 + x**5/120 + O(x**6)', 'terms': ['x', '-x**3/6', 'x**5/120']}
+        {'result': 'x - x**3/6 + O(x**5)', 'polynomial': '-x**3/6 + x', 'terms': ['-x**3/6', 'x']}
         >>> taylor_series("exp(x)", "x", "0", 4)
-        {'result': '1 + x + x**2/2 + x**3/6 + O(x**4)', 'terms': ['1', 'x', 'x**2/2', 'x**3/6']}
+        {'result': '1 + x + x**2/2 + x**3/6 + O(x**4)', 'polynomial': 'x**3/6 + x**2/2 + x + 1', 'terms': ['x**3/6', 'x**2/2', 'x', '1']}
 
     Notes:
         - When point is 0, this is the Maclaurin series
@@ -499,7 +495,7 @@ def taylor_series(expression: str, variable: str = "x", point: str = "0", order:
     """
     try:
         var = symbols(variable)
-        expr = sympify(normalize_expression(expression, variable=variable))
+        expr = parse_expression(expression, variable)
         point_val = sympify(str(point))
         
         # Compute Taylor series
@@ -524,7 +520,6 @@ def taylor_series(expression: str, variable: str = "x", point: str = "0", order:
         return {"error": str(e)}
 
 
-@app.tool()
 def solve_system(equations: List[str], variables: List[str] = None) -> dict:
     """
     Solves a system of equations for multiple variables.
@@ -541,11 +536,11 @@ def solve_system(equations: List[str], variables: List[str] = None) -> dict:
 
     Examples:
         >>> solve_system(["x + y = 5", "x - y = 1"])
-        {'solutions': '{x: 3, y: 2}'}
+        {'solutions': '[{x: 3, y: 2}]'}
         >>> solve_system(["x + y + z = 6", "x - y = 0", "y + z = 4"])
-        {'solutions': '{x: 2, y: 2, z: 2}'}
+        {'solutions': '[{x: 2, y: 2, z: 2}]'}
         >>> solve_system(["x**2 + y**2 = 25", "x = y"])
-        {'solutions': '[(-5*sqrt(2)/2, -5*sqrt(2)/2), (5*sqrt(2)/2, 5*sqrt(2)/2)]'}
+        {'solutions': '[{x: -5*sqrt(2)/2, y: -5*sqrt(2)/2}, {x: 5*sqrt(2)/2, y: 5*sqrt(2)/2}]'}
 
     Notes:
         - Equations must contain exactly one '=' sign
@@ -589,7 +584,6 @@ def solve_system(equations: List[str], variables: List[str] = None) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def mean(data: List[float]) -> dict:
     """
     Computes the mean of a list of numbers.
@@ -614,7 +608,6 @@ def mean(data: List[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def variance(data: List[float]) -> dict:
     """
     Computes the variance of a list of numbers.
@@ -637,7 +630,6 @@ def variance(data: List[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def standard_deviation(data: List[float]) -> dict:
     """
     Computes the standard deviation of a list of numbers.
@@ -660,7 +652,6 @@ def standard_deviation(data: List[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def median(data: List[float]) -> dict:
     """
     Computes the median of a list of numbers.
@@ -683,7 +674,6 @@ def median(data: List[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def mode(data: List[float]) -> dict:
     """
     Computes the mode of a list of numbers.
@@ -713,7 +703,6 @@ def mode(data: List[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def correlation_coefficient(data_x: List[float], data_y: List[float]) -> dict:
     """
     Computes the Pearson correlation coefficient between two lists of numbers.
@@ -737,7 +726,6 @@ def correlation_coefficient(data_x: List[float], data_y: List[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def linear_regression(data: List[Tuple[float, float]]) -> dict:
     """
     Performs linear regression on a set of points and returns the slope and intercept.
@@ -762,7 +750,6 @@ def linear_regression(data: List[Tuple[float, float]]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def confidence_interval(data: List[float], confidence: float = 0.95) -> dict:
     """
     Computes the confidence interval for the mean of a dataset.
@@ -795,7 +782,6 @@ def confidence_interval(data: List[float], confidence: float = 0.95) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def matrix_addition(matrix_a: List[List[float]], matrix_b: List[List[float]]) -> dict:
     """
     Adds two matrices.
@@ -819,7 +805,6 @@ def matrix_addition(matrix_a: List[List[float]], matrix_b: List[List[float]]) ->
         return {"error": str(e)}
 
 
-@app.tool()
 def matrix_multiplication(
     matrix_a: List[List[float]], matrix_b: List[List[float]]
 ) -> dict:
@@ -845,7 +830,6 @@ def matrix_multiplication(
         return {"error": str(e)}
 
 
-@app.tool()
 def matrix_transpose(matrix: List[List[float]]) -> dict:
     """
     Transposes a matrix.
@@ -868,7 +852,6 @@ def matrix_transpose(matrix: List[List[float]]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def matrix_determinant(matrix: List[List[float]]) -> dict:
     """
     Multiplies two matrices.
@@ -891,7 +874,6 @@ def matrix_determinant(matrix: List[List[float]]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def matrix_eigenvalues(matrix: List[List[float]]) -> dict:
     """
     Computes the eigenvalues of a square matrix.
@@ -905,7 +887,7 @@ def matrix_eigenvalues(matrix: List[List[float]]) -> dict:
 
     Examples:
         >>> matrix_eigenvalues([[1, 2], [3, 4]])
-        {'result': [5.372281323269014, -0.3722813232690143], 'explanation': 'Calculated 2 eigenvalues'}
+        {'result': [-0.3722813232690143, 5.372281323269014], 'explanation': 'Calculated 2 eigenvalues'}
         >>> matrix_eigenvalues([[2, 0], [0, 3]])
         {'result': [2.0, 3.0], 'explanation': 'Calculated 2 eigenvalues'}
     """
@@ -936,7 +918,6 @@ def matrix_eigenvalues(matrix: List[List[float]]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def vector_dot_product(vector_a: tuple[float], vector_b: tuple[float]) -> dict:
     """
     Multiplies two matrices.
@@ -960,7 +941,6 @@ def vector_dot_product(vector_a: tuple[float], vector_b: tuple[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def vector_cross_product(vector_a: tuple[float], vector_b: tuple[float]) -> dict:
     """
     Multiplies two matrices.
@@ -984,7 +964,6 @@ def vector_cross_product(vector_a: tuple[float], vector_b: tuple[float]) -> dict
         return {"error": str(e)}
 
 
-@app.tool()
 def vector_magnitude(vector: tuple[float]) -> dict:
     """
     Multiplies two matrices.
@@ -1007,7 +986,6 @@ def vector_magnitude(vector: tuple[float]) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def plot_function(
     expression: str, start: int = -10, end: int = 10, step: int = 100
 ) -> dict:
@@ -1032,7 +1010,7 @@ def plot_function(
     """
     x = sp.Symbol("x")
     try:
-        expression = sp.sympify(normalize_expression(expression))
+        expression = parse_expression(expression)
         f = sp.lambdify(x, expression, "numpy")
         x_values = np.linspace(start, end, step)
         y_values = f(x_values)
@@ -1055,7 +1033,6 @@ def plot_function(
         return {"error": str(e)}
 
 
-@app.tool()
 def summation(expression: str, start: int = 0, end: int = 10) -> dict:
     """
     Calculates the summation of a function from start to end.
@@ -1075,7 +1052,7 @@ def summation(expression: str, start: int = 0, end: int = 10) -> dict:
     """
     try:
         x = sp.Symbol("x")
-        expr = sp.sympify(normalize_expression(expression))
+        expr = parse_expression(expression)
         summation = sp.Sum(expr, (x, start, end))
         result = summation.doit()
         return {"result": int(result) if result.is_integer else float(result)}
@@ -1083,7 +1060,6 @@ def summation(expression: str, start: int = 0, end: int = 10) -> dict:
         return {"error": str(e)}
 
 
-@app.tool()
 def expand(expression: str) -> dict:
     """
     Expands an expression.
@@ -1101,13 +1077,12 @@ def expand(expression: str) -> dict:
     """
     try:
         x = sp.Symbol("x")
-        expanded_expression = sp.expand(normalize_expression(expression))
+        expanded_expression = sp.expand(parse_expression(expression))
         return {"result": str(expanded_expression)}
     except Exception as e:
         return {"error": str(e)}
 
 
-@app.tool()
 def factorize(expression: str) -> dict:
     """
     Factorizes an expression.
@@ -1125,18 +1100,8 @@ def factorize(expression: str) -> dict:
     """
     try:
         x = sp.Symbol("x")
-        factored_expression = sp.factor(normalize_expression(expression))
+        factored_expression = sp.factor(parse_expression(expression))
         return {"result": str(factored_expression)}
     except Exception as e:
         return {"error": str(e)}
 
-def main():
-    parser = argparse.ArgumentParser(description="Mathematical Calculator MCP Server")
-    parser.add_argument("--stdio", action="store_true", help="Use STDIO transport instead of SSE")
-    args = parser.parse_args()
-    
-    transport = "stdio" if args.stdio else TRANSPORT
-    app.run(transport=transport)
-
-if __name__ == "__main__":
-    main()

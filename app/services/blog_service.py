@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, List, Dict, Any
 from app.services.supabase_service import supabase
+from fastapi.concurrency import run_in_threadpool
 
 
 async def get_all_posts(page: int = 1, limit: int = 10) -> Dict[str, Any]:
@@ -14,12 +15,14 @@ async def get_all_posts(page: int = 1, limit: int = 10) -> Dict[str, Any]:
         start = (page - 1) * limit
         end = start + limit - 1
         
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)", count="exact") \
             .eq("published", True) \
             .order("created_at", desc=True) \
             .range(start, end) \
-            .execute()
+            
+        
+        result = await run_in_threadpool(query.execute)
         
         return {
             "posts": result.data or [],
@@ -38,13 +41,14 @@ async def get_featured_posts(limit: int = 3) -> List[Dict[str, Any]]:
         return []
     
     try:
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("published", True) \
             .eq("featured", True) \
             .order("created_at", desc=True) \
             .limit(limit) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         
         return result.data or []
     except Exception as e:
@@ -60,12 +64,13 @@ async def get_post_by_slug(slug: str) -> Optional[Dict[str, Any]]:
         return None
     
     try:
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("slug", slug) \
             .eq("published", True) \
             .single() \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         
         return result.data
     except Exception as e:
@@ -82,11 +87,12 @@ async def get_posts_by_category(category_slug: str, page: int = 1, limit: int = 
     
     try:
         # First get the category
-        cat_result = supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .select("*") \
             .eq("slug", category_slug) \
             .single() \
-            .execute()
+            
+        cat_result = await run_in_threadpool(query.execute)
         
         if not cat_result.data:
             return {"posts": [], "category": None, "total": 0}
@@ -97,13 +103,15 @@ async def get_posts_by_category(category_slug: str, page: int = 1, limit: int = 
         start = (page - 1) * limit
         end = start + limit - 1
         
-        posts_result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)", count="exact") \
             .eq("category_id", category["id"]) \
             .eq("published", True) \
             .order("created_at", desc=True) \
             .range(start, end) \
-            .execute()
+            
+        
+        posts_result = await run_in_threadpool(query.execute)
         
         return {
             "posts": posts_result.data or [],
@@ -124,18 +132,20 @@ async def get_all_categories() -> List[Dict[str, Any]]:
     
     try:
         # Get categories
-        cat_result = supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .select("*") \
             .order("name") \
-            .execute()
+            
+        cat_result = await run_in_threadpool(query.execute)
         
         categories = cat_result.data or []
         
         # Get post counts
-        posts_result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("category_id") \
             .eq("published", True) \
-            .execute()
+            
+        posts_result = await run_in_threadpool(query.execute)
         
         # Calculate counts
         count_map = {}
@@ -162,12 +172,13 @@ async def get_recent_posts(limit: int = 5) -> List[Dict[str, Any]]:
         return []
     
     try:
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("published", True) \
             .order("created_at", desc=True) \
             .limit(limit) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         
         return result.data or []
     except Exception as e:
@@ -183,14 +194,15 @@ async def get_related_posts(post_id: str, category_id: str, limit: int = 3) -> L
         return []
     
     try:
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("category_id", category_id) \
             .eq("published", True) \
             .neq("id", post_id) \
             .order("created_at", desc=True) \
             .limit(limit) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         
         return result.data or []
     except Exception as e:
@@ -206,13 +218,14 @@ async def search_posts(query: str, limit: int = 20) -> List[Dict[str, Any]]:
         return []
     
     try:
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("published", True) \
             .or_(f"title.ilike.%{query}%,excerpt.ilike.%{query}%,content.ilike.%{query}%") \
             .order("created_at", desc=True) \
             .limit(limit) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         
         return result.data or []
     except Exception as e:

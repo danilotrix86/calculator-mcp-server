@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, List, Dict, Any
 from app.services.supabase_service import supabase
+from fastapi.concurrency import run_in_threadpool
 
 
 # ============== AUTHORS ==============
@@ -11,10 +12,11 @@ async def get_all_authors() -> List[Dict[str, Any]]:
         return []
     
     try:
-        result = supabase.table("blog_authors") \
+        query = supabase.table("blog_authors") \
             .select("*") \
             .order("name") \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         return result.data or []
     except Exception as e:
         logging.error(f"Error fetching authors: {str(e)}")
@@ -27,9 +29,10 @@ async def create_author(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     
     try:
-        result = supabase.table("blog_authors") \
+        query = supabase.table("blog_authors") \
             .insert(data) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         return result.data[0] if result.data else None
     except Exception as e:
         logging.error(f"Error creating author: {str(e)}")
@@ -44,10 +47,11 @@ async def get_all_categories_admin() -> List[Dict[str, Any]]:
         return []
     
     try:
-        result = supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .select("*") \
             .order("name") \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         return result.data or []
     except Exception as e:
         logging.error(f"Error fetching categories: {str(e)}")
@@ -60,9 +64,10 @@ async def create_category(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     
     try:
-        result = supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .insert(data) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         return result.data[0] if result.data else None
     except Exception as e:
         logging.error(f"Error creating category: {str(e)}")
@@ -76,17 +81,19 @@ async def update_category(category_id: str, data: Dict[str, Any]) -> Optional[Di
     
     try:
         # Update the category
-        supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .update(data) \
             .eq("id", category_id) \
-            .execute()
+            
+        await run_in_threadpool(query.execute)
         
         # Fetch and return the updated category
-        result = supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .select("*") \
             .eq("id", category_id) \
             .single() \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         return result.data
     except Exception as e:
         logging.error(f"Error updating category: {str(e)}")
@@ -99,10 +106,11 @@ async def delete_category(category_id: str) -> bool:
         return False
     
     try:
-        supabase.table("blog_categories") \
+        query = supabase.table("blog_categories") \
             .delete() \
             .eq("id", category_id) \
-            .execute()
+            
+        await run_in_threadpool(query.execute)
         return True
     except Exception as e:
         logging.error(f"Error deleting category: {str(e)}")
@@ -120,11 +128,13 @@ async def get_all_posts_admin(page: int = 1, limit: int = 20) -> Dict[str, Any]:
         start = (page - 1) * limit
         end = start + limit - 1
         
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(id, name, slug), author:blog_authors(id, name)", count="exact") \
             .order("created_at", desc=True) \
             .range(start, end) \
-            .execute()
+            
+        
+        result = await run_in_threadpool(query.execute)
         
         return {
             "posts": result.data or [],
@@ -141,11 +151,12 @@ async def get_post_by_id(post_id: str) -> Optional[Dict[str, Any]]:
         return None
     
     try:
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("id", post_id) \
             .single() \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         return result.data
     except Exception as e:
         logging.error(f"Error fetching post by ID: {str(e)}")
@@ -159,9 +170,10 @@ async def create_post(data: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         logging.info(f"Creating post with data: {data}")
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .insert(data) \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         if not result.data:
             raise ValueError("No data returned from insert")
         return result.data[0]
@@ -178,17 +190,19 @@ async def update_post(post_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     try:
         logging.info(f"Updating post {post_id} with data: {data}")
         # Update the post
-        supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .update(data) \
             .eq("id", post_id) \
-            .execute()
+            
+        await run_in_threadpool(query.execute)
         
         # Fetch and return the updated post
-        result = supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .select("*") \
             .eq("id", post_id) \
             .single() \
-            .execute()
+            
+        result = await run_in_threadpool(query.execute)
         if not result.data:
             raise ValueError("Post not found after update")
         return result.data
@@ -203,10 +217,11 @@ async def delete_post(post_id: str) -> bool:
         return False
     
     try:
-        supabase.table("blog_posts") \
+        query = supabase.table("blog_posts") \
             .delete() \
             .eq("id", post_id) \
-            .execute()
+            
+        await run_in_threadpool(query.execute)
         return True
     except Exception as e:
         logging.error(f"Error deleting post: {str(e)}")

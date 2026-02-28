@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SERVICE_NAME="calculator-mcp-server"
-REGION="us-central1"
+REGION="europe-west1"
 PORT="8080"
 MEMORY="2Gi"
 CPU="2"

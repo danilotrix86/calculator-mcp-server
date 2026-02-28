@@ -18,7 +18,7 @@ steps:
       - '--image'
       - 'gcr.io/$PROJECT_ID/calculator-mcp-server'
       - '--region'
-      - 'us-central1'
+      - 'europe-west1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'

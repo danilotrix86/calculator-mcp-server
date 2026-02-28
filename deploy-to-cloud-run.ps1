@@ -3,7 +3,7 @@
 
 param(
     [string]$ServiceName = "calculator-mcp-server",
-    [string]$Region = "europe-west12",
+    [string]$Region = "europe-west1",
     [string]$Port = "8080",
     [string]$Memory = "2Gi",
     [string]$Cpu = "2",
@@ -24,6 +24,10 @@ try {
     Write-Host "Please install it from: https://cloud.google.com/sdk/docs/install"
     exit 1
 }
+
+# Set the project
+Write-Host "Setting project to 'risolutorematematico'..." -ForegroundColor Yellow
+gcloud config set project risolutorematematico --quiet
 
 # Check if user is authenticated
 try {
@@ -81,6 +85,11 @@ function Read-EnvFile {
             if ($trimmedLine -match '^([^=]+)=(.*)$') {
                 $key = $matches[1].Trim()
                 $value = $matches[2].Trim()
+                
+                # Strip inline comments (anything after a space and #)
+                if ($value -match '^(.*?)\s+#') {
+                    $value = $matches[1].Trim()
+                }
                 
                 # Remove quotes if present
                 if ($value.StartsWith('"') -and $value.EndsWith('"')) {

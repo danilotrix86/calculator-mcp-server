@@ -1,251 +1,46 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
-from typing import AsyncIterator
 import logging
-import json
 
 from app.schemas.solve import SolveRequest, SolveResponse, SolveImageRequest
-from app.services.openai_service import solve_with_openai, solve_with_openai_streaming, extract_formula_from_image
-from app.services import supabase_service
+from app.services.solve_service import SolveService, get_solve_service
 
 
 router = APIRouter(tags=["solve"])
 
 
 @router.post("/solve", response_model=SolveResponse)
-async def solve_endpoint(payload: SolveRequest, x_openai_api_key: str | None = Header(default=None)) -> SolveResponse:
-    logging.info("Processing solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
-    
-    # Store the question in Supabase
-    query_id = await supabase_service.save_query(payload.text)
-    
-    # Process the request with OpenAI
-    result = await solve_with_openai(query_text=payload.text, api_key_override=x_openai_api_key)
-    
-    if result.error:
-        logging.error("Solve request error: %s", result.error)
-        
-        # Update Supabase with error
-        if query_id:
-            await supabase_service.update_query_error(query_id, result.error)
-        
-        raise HTTPException(status_code=400, detail=result.error)
-    
-    logging.info("Solve request completed successfully. Tool used: %s", result.tool_called if result.used_tool else "None")
-    
-    # Update Supabase with response
-    if query_id:
-        await supabase_service.update_query_response(
-            query_id, 
-            result.answer, 
-            result.tool_called if result.used_tool else None
-        )
-    
-    return result
+async def solve_endpoint(
+    payload: SolveRequest, 
+    x_openai_api_key: str | None = Header(default=None),
+    solve_service: SolveService = Depends(get_solve_service)
+) -> SolveResponse:
+    return await solve_service.solve(payload=payload, api_key_override=x_openai_api_key)
 
 
 @router.post("/solve/stream")
-async def solve_stream_endpoint(payload: SolveRequest, x_openai_api_key: str | None = Header(default=None)) -> StreamingResponse:
+async def solve_stream_endpoint(
+    payload: SolveRequest, 
+    x_openai_api_key: str | None = Header(default=None),
+    solve_service: SolveService = Depends(get_solve_service)
+) -> StreamingResponse:
     """Stream the solution as it's being generated"""
-    logging.info("Processing streaming solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
-    
-    # Check for cached response
-    cached = await supabase_service.find_cached_response(payload.text)
-    if cached:
-        logging.info("Found cached response for query: %s", payload.text[:50])
-        
-        async def cached_generator() -> AsyncIterator[str]:
-            tool_used = cached.get("tool_used")
-            response_text = cached.get("response", "")
-            
-            # Notify about tool usage if applicable (informative)
-            if tool_used:
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_used, 'tool_id': 'cached', 'args': {}})}\n\n"
-                # Small delay to ensure order?
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_id': 'cached', 'result': 'Restored from database'})}\n\n"
-            
-            # Send the full content
-            yield f"data: {json.dumps({'type': 'content', 'content': response_text})}\n\n"
-            yield f"data: {json.dumps({'type': 'content_complete'})}\n\n"
-
-        return StreamingResponse(
-            cached_generator(),
-            media_type="text/event-stream"
-        )
-
-    # Store the question in Supabase
-    query_id = await supabase_service.save_query(payload.text)
-    
-    # Store the complete response to update Supabase later
-    complete_response = []
-    tool_used = None
-    
-    async def stream_generator() -> AsyncIterator[str]:
-        nonlocal complete_response, tool_used
-        try:
-            async for chunk in solve_with_openai_streaming(query_text=payload.text, api_key_override=x_openai_api_key, force_tool=True):
-                # Parse the chunk to extract tool information and content
-                try:
-                    chunk_data = json.loads(chunk)
-                    chunk_type = chunk_data.get("type", "")
-                    
-                    # Track tool usage
-                    if chunk_type == "tool_call":
-                        tool_used = chunk_data.get("tool")
-                    
-                    # Only capture actual text content for caching
-                    if chunk_type == "content_chunk":
-                        content = chunk_data.get("content", "")
-                        if content:
-                            complete_response.append(content)
-                    elif chunk_type == "content":
-                        # Direct content (non-streaming response)
-                        content = chunk_data.get("content", "")
-                        if content:
-                            complete_response.append(content)
-                    elif chunk_type == "content_complete":
-                        # Final content from content_complete (has full buffer)
-                        content = chunk_data.get("content", "")
-                        if content and not complete_response:
-                            # Only use if we haven't accumulated chunks
-                            complete_response.append(content)
-                except (json.JSONDecodeError, TypeError):
-                    # Skip chunks that can't be parsed as JSON
-                    pass
-                
-                yield f"data: {chunk}\n\n"
-                
-            # After streaming is complete, update Supabase with the complete response
-            if query_id:
-                final_response = "".join(complete_response)
-                await supabase_service.update_query_response(query_id, final_response, tool_used)
-        except Exception as e:
-            error_msg = f"Error in streaming: {str(e)}"
-            logging.error(error_msg)
-            
-            # Update Supabase with error
-            if query_id:
-                await supabase_service.update_query_error(query_id, error_msg)
-            
-            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-    
     logging.info("Starting streaming response")
     return StreamingResponse(
-        stream_generator(),
+        solve_service.solve_stream(payload=payload, api_key_override=x_openai_api_key),
         media_type="text/event-stream"
     )
 
 
 @router.post("/solve/image")
-async def solve_image_endpoint(payload: SolveImageRequest, x_openai_api_key: str | None = Header(default=None)) -> StreamingResponse:
+async def solve_image_endpoint(
+    payload: SolveImageRequest, 
+    x_openai_api_key: str | None = Header(default=None),
+    solve_service: SolveService = Depends(get_solve_service)
+) -> StreamingResponse:
     """Extract formula from image and stream the solution"""
-    logging.info("Processing image solve request")
-    
-    # Store the question in Supabase (initially as "Image upload")
-    query_id = await supabase_service.save_query("Image upload (formula extraction)")
-    
-    # Store the complete response to update Supabase later
-    extracted_formula = None
-    complete_response = []
-    tool_used = None
-    
-    async def stream_generator() -> AsyncIterator[str]:
-        nonlocal complete_response, tool_used, extracted_formula
-        try:
-            # First extract the formula from the image
-            formula = await extract_formula_from_image(image_data=payload.image_data, api_key_override=x_openai_api_key)
-            extracted_formula = formula
-            
-            # Update Supabase with the extracted formula
-            if query_id:
-                await supabase_service.update_query_question(query_id, f"Image upload: {formula}")
-            
-            # Check if formula extraction had an error
-            if formula.startswith("Error"):
-                error_data = json.dumps({'type': 'error', 'error': formula})
-                yield f"data: {error_data}\n\n"
-                
-                # Update Supabase with error
-                if query_id:
-                    await supabase_service.update_query_error(query_id, formula)
-                return
-            
-            # Notify client that formula was extracted
-            yield f"data: {json.dumps({'type': 'extracted_formula', 'formula': formula})}\n\n"
-            
-            # If multiple formulas were extracted (separated by semicolons), use the first one
-            # or combine them into a system of equations
-            if ";" in formula:
-                formulas = [f.strip() for f in formula.split(";")]
-                # If we have exactly two equations, treat them as a system
-                if len(formulas) == 2 and all("=" in f for f in formulas):
-                    # Format as a system of equations
-                    query = f"Solve the system of equations: {formulas[0]} and {formulas[1]}"
-                    logging.info(f"Processing as a system of equations: {query}")
-                else:
-                    # Otherwise just use the first formula
-                    query = formulas[0]
-                    logging.info(f"Multiple formulas detected, using the first one: {query}")
-            else:
-                query = formula
-            
-            # Then solve the formula using the existing streaming endpoint
-            try:
-                generator = solve_with_openai_streaming(query_text=query, api_key_override=x_openai_api_key, force_tool=True)
-                async for chunk in generator:
-                    # Parse the chunk to extract tool information and content
-                    try:
-                        chunk_data = json.loads(chunk)
-                        chunk_type = chunk_data.get("type", "")
-                        
-                        # Track tool usage
-                        if chunk_type == "tool_call":
-                            tool_used = chunk_data.get("tool")
-                        
-                        # Only capture actual text content for caching
-                        if chunk_type == "content_chunk":
-                            content = chunk_data.get("content", "")
-                            if content:
-                                complete_response.append(content)
-                        elif chunk_type == "content":
-                            content = chunk_data.get("content", "")
-                            if content:
-                                complete_response.append(content)
-                        elif chunk_type == "content_complete":
-                            content = chunk_data.get("content", "")
-                            if content and not complete_response:
-                                complete_response.append(content)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                    
-                    yield f"data: {chunk}\n\n"
-                
-                # After streaming is complete, update Supabase with the complete response
-                if query_id:
-                    final_response = "".join(complete_response)
-                    await supabase_service.update_query_response(query_id, final_response, tool_used)
-                        
-            except Exception as e:
-                error_msg = f"Error solving formula: {str(e)}"
-                logging.error(error_msg)
-                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-                
-                # Update Supabase with error
-                if query_id:
-                    await supabase_service.update_query_error(query_id, f"Error solving formula: {str(e)}")
-        except Exception as e:
-            error_msg = f"Error processing image: {str(e)}"
-            logging.error(error_msg)
-            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-            
-            # Update Supabase with error
-            if query_id:
-                await supabase_service.update_query_error(query_id, f"Error processing image: {str(e)}")
-    
     logging.info("Starting image processing and streaming response")
     return StreamingResponse(
-        stream_generator(),
+        solve_service.solve_image(payload=payload, api_key_override=x_openai_api_key),
         media_type="text/event-stream"
     )
-
-

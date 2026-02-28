@@ -10,11 +10,16 @@ from pydantic import BaseModel
 from app.schemas.solve import SolveResponse
 from app.services.tool_registry import get_tools_for_openai, execute_tool_call
 from app.prompts import MATH_SOLVER_SYSTEM_PROMPT, MATH_VISION_SYSTEM_PROMPT
+from functools import lru_cache
 from dotenv import load_dotenv
-
 
 # Lazy module import to avoid hard dependency at import time
 _openai_client: Optional[Any] = None
+
+@lru_cache(maxsize=128)
+def _get_override_client(api_key: str) -> Any:
+    from openai import AsyncOpenAI
+    return AsyncOpenAI(api_key=api_key)
 
 
 class OpenAIMessage(BaseModel):
@@ -59,9 +64,7 @@ async def _chat_once(messages: List[Dict[str, str]], api_key_override: Optional[
     client = _openai_client
     if api_key_override:
         try:
-            from openai import AsyncOpenAI
-
-            client = AsyncOpenAI(api_key=api_key_override)
+            client = _get_override_client(api_key_override)
         except Exception as exc:
             return {"error": f"Failed to initialize OpenAI client with override: {exc}"}
     if client is None:
@@ -106,8 +109,7 @@ async def extract_formula_from_image(image_data: str, api_key_override: Optional
     client = _openai_client
     if api_key_override:
         try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=api_key_override)
+            client = _get_override_client(api_key_override)
         except Exception as exc:
             logging.error(f"Error initializing OpenAI client: {exc}")
             return f"Error initializing OpenAI client: {exc}"

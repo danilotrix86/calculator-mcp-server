@@ -1,1 +1,1 @@
-python -m doctest -v calculator_server.py
+python -m doctest -v app/services/math_service.py

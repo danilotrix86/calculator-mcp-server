@@ -8,16 +8,23 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies first for better layer caching
-COPY requirements.txt ./
-RUN python -m pip install --upgrade pip \
-    && pip install -r requirements.txt
+# Copy only pyproject.toml first to leverage Docker layer caching
+COPY pyproject.toml .
 
-# Copy application code
+# Create a dummy README.md to prevent setuptools from failing if it looks for it
+RUN touch README.md
+
+# Install dependencies
+RUN python -m pip install --upgrade pip \
+    && pip install build setuptools \
+    && pip install .
+
+# Now copy the rest of the application code
 COPY . .
 
 # Cloud Run provides $PORT; default to 8080 for local runs
-ENV PORT=8080
+    ENV PORT=8080 \
+    USE_JSON_LOGGING=true
 
 # Start the FastAPI server
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
