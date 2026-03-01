@@ -118,6 +118,47 @@ def get_tools_for_openai() -> List[Dict[str, Any]]:
     """Dynamically build OpenAI tool schemas from all registered executors."""
     return [generate_tool_schema(func) for func in _EXECUTORS.values()]
 
+# Mapping of tool names to their underlying libraries
+_TOOL_LIBRARIES = {
+    # SymPy-based tools (Symbolic math: algebra, calculus)
+    "solve_equation": "SymPy",
+    "differentiate": "SymPy",
+    "integrate": "SymPy",
+    "definite_integral": "SymPy",
+    "compute_limit": "SymPy",
+    "partial_fractions": "SymPy",
+    "simplify_expression": "SymPy",
+    "taylor_series": "SymPy",
+    "solve_system": "SymPy",
+    "expand": "SymPy",
+    "factorize": "SymPy",
+    
+    # NumPy-based tools (Numerical computing, arrays)
+    "matrix_addition": "NumPy",
+    "matrix_multiplication": "NumPy",
+    "matrix_transpose": "NumPy",
+    "matrix_determinant": "NumPy",
+    "matrix_eigenvalues": "NumPy",
+    "vector_dot_product": "NumPy",
+    "vector_cross_product": "NumPy",
+    "vector_magnitude": "NumPy",
+    "correlation_coefficient": "NumPy",
+    
+    # SciPy-based tools (Advanced statistics)
+    "mode": "SciPy (statistics)",
+    "linear_regression": "SciPy (stats.linregress)",
+    
+    # NumPy-based statistical tools
+    "mean": "NumPy (statistics)",
+    "median": "NumPy (statistics)",
+    "variance": "NumPy (statistics)",
+    "standard_deviation": "NumPy (statistics)",
+    "summation": "SymPy (with NumPy evaluation)",
+    
+    # Built-in Math + NumPy (basic calculation)
+    "calculate": "Python math + NumPy",
+}
+
 async def execute_tool_call(name: Optional[str], args_json: str) -> str:
     if not name:
         return json.dumps({"error": "Missing tool name"})
@@ -133,7 +174,17 @@ async def execute_tool_call(name: Optional[str], args_json: str) -> str:
         result = func(**parsed)
         result_json = json.dumps(result)
         logging.info("🧮 CALCULATION RESULT from %s: %s", name, result)
-        logging.info("🧮 This result comes from SymPy/NumPy/SciPy, NOT from LLM inference!")
+        
+        # Log which library was used for this calculation
+        library = _TOOL_LIBRARIES.get(name, "Unknown Library")
+        logging.info("🧮 This result comes from %s, NOT from LLM inference!", library)
+        
+        # Log any extra data being returned (not just "result")
+        if isinstance(result, dict):
+            extra_keys = [k for k in result.keys() if k not in ("result", "error")]
+            if extra_keys:
+                logging.info("📊 ADDITIONAL DATA AVAILABLE: %s | Values: %s", name, {k: result[k] for k in extra_keys})
+        
         return result_json
     except Exception as exc:
         error_result = {"error": str(exc)}

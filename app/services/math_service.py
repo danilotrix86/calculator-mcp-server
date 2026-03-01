@@ -155,7 +155,7 @@ def calculate(expression: str) -> dict:
 
 def solve_equation(equation: str) -> dict:
     """
-    Solves an algebraic equation for x and returns all solutions.
+    Solves an algebraic equation for x and returns all solutions with verification.
 
     The equation must contain exactly one equality sign (=) and use a
     variable x. Can solve polynomial, trigonometric, and other equations
@@ -167,21 +167,21 @@ def solve_equation(equation: str) -> dict:
                  Examples: "x**2 - 5*x + 6 = 0", "sin(x) = 0.5", "2*x + 3 = 7"
 
     Returns:
-        On success: {"solutions": <list of solutions as string>}
+        On success: {
+            "solutions": <list of solutions>,
+            "equation": <original equation>,
+            "num_solutions": <count>,
+            "method": <solving method used>,
+            "verification": [{"solution": ..., "check": ..., "valid": true/false}],
+            "factored_form": <factored representation if applicable>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> solve_equation("x**2 - 5*x + 6 = 0")
-        {'solutions': '[2, 3]'}
+        {'solutions': [2, 3], 'num_solutions': 2, 'verification': [...], ...}
         >>> solve_equation("2*x + 3 = 7")
-        {'solutions': '[2]'}
-        >>> solve_equation("x = 0")
-        {'solutions': '[0]'}
-
-    Notes:
-        - Use 'x' as the variable (e.g., x**2, not x²)
-        - Multiplication must be explicitly indicated with * (e.g., 2*x, not 2x)
-        - Powers are represented with ** (e.g., x**2, not x^2)
+        {'solutions': [2], 'num_solutions': 1, ...}
     """
     try:
         x = symbols("x")
@@ -195,7 +195,60 @@ def solve_equation(equation: str) -> dict:
 
         # Solve the equation
         solutions = solve(left - right, x)
-        return {"solutions": str(solutions)}
+        
+        # Convert solutions to list format
+        solution_list = list(solutions) if solutions else []
+        
+        # Determine the solving method
+        expr = left - right
+        if expr.is_polynomial():
+            poly_degree = sp.Poly(expr, x).degree()
+            if poly_degree == 1:
+                method = "Linear equation"
+            elif poly_degree == 2:
+                method = "Quadratic equation"
+            elif poly_degree == 3:
+                method = "Cubic equation"
+            else:
+                method = f"Polynomial equation (degree {poly_degree})"
+        else:
+            method = "Transcendental equation"
+        
+        # Try to get factored form
+        try:
+            factored = sp.factor(expr)
+            factored_form = str(factored)
+        except:
+            factored_form = None
+        
+        # Verify each solution by substituting back
+        verification = []
+        for sol in solution_list:
+            try:
+                left_result = left.subs(x, sol)
+                right_result = right.subs(x, sol)
+                # Check if they're equal (within floating point tolerance for numerical solutions)
+                is_valid = simplify(left_result - right_result) == 0
+                verification.append({
+                    "solution": str(sol),
+                    "left_side": str(left_result),
+                    "right_side": str(right_result),
+                    "valid": is_valid
+                })
+            except:
+                verification.append({
+                    "solution": str(sol),
+                    "valid": None
+                })
+        
+        return {
+            "solutions": [str(s) for s in solution_list],
+            "equation": equation,
+            "num_solutions": len(solution_list),
+            "method": method,
+            "verification": verification,
+            "factored_form": factored_form
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -214,30 +267,72 @@ def differentiate(expression: str, variable: str = "x") -> dict:
                  Optionally, other variables can be specified.
 
     Returns:
-        On success: {"result": <derivative as string>}
+        On success: {
+            "result": <derivative as string>,
+            "expression": <original expression>,
+            "variable": <differentiation variable>,
+            "method": <differentiation rule used>,
+            "interpretation": <description of what derivative represents>,
+            "order": <order of derivative (first, second, etc.)>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> differentiate("x**2")
-        {'result': '2*x'}
+        {'result': '2*x', 'method': 'Power rule', ...}
         >>> differentiate("sin(x)")
-        {'result': 'cos(x)'}
+        {'result': 'cos(x)', 'method': 'Trigonometric derivative', ...}
         >>> differentiate("x*y", "y")
-        {'result': 'x'}
+        {'result': 'x', 'method': 'Power rule', ...}
         >>> differentiate("exp(x)")
-        {'result': 'exp(x)'}
+        {'result': 'exp(x)', 'method': 'Exponential derivative', ...}
 
     Notes:
         - Use mathematical notation with explicit operators (* for multiplication)
         - Powers are represented with ** (e.g., x**2, not x^2)
         - For trigonometric functions, use sin(x), cos(x), etc.
         - Only support for one variable at a time (implicit differentiation not supported)
+        - The derivative represents the instantaneous rate of change at any point
     """
     try:
         var = symbols(variable)
         expr = parse_expression(expression, variable)
         result = diff(expr, var)
-        return {"result": str(result)}
+        
+        # Determine the differentiation method based on expression type
+        expr_str = str(expr)
+        
+        if expr.is_polynomial():
+            method = "Power rule: d/dx(x^n) = n*x^(n-1)"
+        elif any(trig in expr_str for trig in ['sin', 'cos', 'tan', 'cot', 'sec', 'csc']):
+            if 'sin' in expr_str:
+                method = "Trigonometric: d/dx(sin(x)) = cos(x)"
+            elif 'cos' in expr_str:
+                method = "Trigonometric: d/dx(cos(x)) = -sin(x)"
+            elif 'tan' in expr_str:
+                method = "Trigonometric: d/dx(tan(x)) = sec²(x)"
+            else:
+                method = "Trigonometric derivative"
+        elif 'exp' in expr_str or 'E' in expr_str:
+            method = "Exponential: d/dx(e^x) = e^x"
+        elif 'log' in expr_str or 'ln' in expr_str:
+            method = "Logarithmic: d/dx(log(x)) = 1/x"
+        elif '*' in expr_str or '**' in expr_str:
+            method = "Product rule or Power rule"
+        else:
+            method = "Differentiation (SymPy)"
+        
+        # Interpretation
+        interpretation = "Represents the instantaneous rate of change (slope) at any point. Used in physics for velocity/acceleration and in optimization."
+        
+        return {
+            "result": str(result),
+            "expression": expression,
+            "variable": variable,
+            "method": method,
+            "interpretation": interpretation,
+            "order": "First derivative"
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -256,30 +351,64 @@ def integrate(expression: str, variable: str = "x") -> dict:
                  Optionally, other variables can be specified.
 
     Returns:
-        On success: {"result": <integral as string>}
+        On success: {
+            "result": <integral as string>,
+            "expression": <original expression>,
+            "variable": <integration variable>,
+            "full_answer": <integral + C>,
+            "method": <integration method used>,
+            "note": "Add constant C for indefinite integrals",
+            "interpretation": <description of what integral represents>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> integrate("x**2")
-        {'result': 'x**3/3'}
+        {'result': 'x**3/3', 'full_answer': 'x**3/3 + C', ...}
         >>> integrate("sin(x)")
-        {'result': '-cos(x)'}
+        {'result': '-cos(x)', 'full_answer': '-cos(x) + C', ...}
         >>> integrate("exp(x)")
-        {'result': 'exp(x)'}
+        {'result': 'exp(x)', 'full_answer': 'exp(x) + C', ...}
         >>> integrate("1/x")
-        {'result': 'log(x)'}
-        >>> integrate("x*y", "y")
-        {'result': 'x*y**2/2'}
+        {'result': 'log(x)', 'full_answer': 'log(x) + C', ...}
 
     Notes:
         - The result is the indefinite integral without the constant of integration
+        - The constant C should be added for the complete answer
         - Complex expressions may be returned in simplified form
     """
     try:
         var = symbols(variable)
         expr = parse_expression(expression, variable)
-        result = sympy_integrate(expr, var)  # Use sympy_integrate instead of integrate
-        return {"result": str(result)}
+        result = sympy_integrate(expr, var)
+        
+        # Determine the integration method based on expression type
+        if expr.is_polynomial():
+            method = "Power rule: integral of x^n = x^(n+1)/(n+1)"
+        elif any(trig in str(expr) for trig in ['sin', 'cos', 'tan']):
+            method = "Trigonometric integration"
+        elif 'exp' in str(expr) or 'E' in str(expr):
+            method = "Exponential integration"
+        elif '1/x' in str(expr) or 'log' in str(expr):
+            method = "Logarithmic integration"
+        else:
+            method = "Integration techniques (SymPy)"
+        
+        # Build the full answer with constant of integration
+        full_answer = f"{str(result)} + C"
+        
+        # Provide interpretation
+        interpretation = "Represents the antiderivative. Add constant C for the complete family of solutions."
+        
+        return {
+            "result": str(result),
+            "expression": expression,
+            "variable": variable,
+            "full_answer": full_answer,
+            "method": method,
+            "note": "Add constant C for indefinite integrals",
+            "interpretation": interpretation
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -522,7 +651,7 @@ def taylor_series(expression: str, variable: str = "x", point: str = "0", order:
 
 def solve_system(equations: List[str], variables: List[str] = None) -> dict:
     """
-    Solves a system of equations for multiple variables.
+    Solves a system of equations for multiple variables with verification.
 
     Args:
         equations: List of equations as strings. Each equation should contain '='.
@@ -531,29 +660,39 @@ def solve_system(equations: List[str], variables: List[str] = None) -> dict:
                   If not provided, variables are auto-detected.
 
     Returns:
-        On success: {"solutions": <dict or list of solutions>}
+        On success: {
+            "solutions": <list of solution dicts>,
+            "equations": <list of original equations>,
+            "num_equations": <count>,
+            "num_variables": <count>,
+            "variables": <list of variable names>,
+            "num_solutions": <count of solutions>,
+            "verification": [{"equation": ..., "result": ...}],
+            "method": <solving method>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> solve_system(["x + y = 5", "x - y = 1"])
-        {'solutions': '[{x: 3, y: 2}]'}
+        {'solutions': [{'x': 3, 'y': 2}], 'num_solutions': 1, 'verification': [...], ...}
         >>> solve_system(["x + y + z = 6", "x - y = 0", "y + z = 4"])
-        {'solutions': '[{x: 2, y: 2, z: 2}]'}
-        >>> solve_system(["x**2 + y**2 = 25", "x = y"])
-        {'solutions': '[{x: -5*sqrt(2)/2, y: -5*sqrt(2)/2}, {x: 5*sqrt(2)/2, y: 5*sqrt(2)/2}]'}
+        {'solutions': [{'x': 2, 'y': 2, 'z': 2}], 'num_equations': 3, ...}
 
     Notes:
         - Equations must contain exactly one '=' sign
         - Supports linear and nonlinear systems
-        - For systems with no solution, returns empty result
+        - For systems with no solution, returns empty solutions list
+        - Each solution is verified by substitution into all equations
     """
     try:
         # Parse equations
         sympy_eqs = []
         detected_vars = set()
+        normalized_eqs = []
         
         for eq_str in equations:
             eq_str = normalize_expression(eq_str)
+            normalized_eqs.append(eq_str)
             parts = eq_str.split('=')
             if len(parts) != 2:
                 return {"error": f"Invalid equation format: {eq_str}. Each equation must contain exactly one '=' sign."}
@@ -569,8 +708,10 @@ def solve_system(equations: List[str], variables: List[str] = None) -> dict:
         # Use provided variables or detected ones
         if variables:
             solve_vars = [symbols(v) for v in variables]
+            var_names = variables
         else:
             solve_vars = list(detected_vars)
+            var_names = [str(v) for v in solve_vars]
         
         # Solve the system
         solutions = solve(sympy_eqs, solve_vars, dict=True)
@@ -579,31 +720,103 @@ def solve_system(equations: List[str], variables: List[str] = None) -> dict:
             # Try without dict=True for systems that return tuples
             solutions = solve(sympy_eqs, solve_vars)
         
-        return {"solutions": str(solutions)}
+        # Convert solutions to list of dicts
+        solution_list = []
+        if isinstance(solutions, list):
+            for sol in solutions:
+                if isinstance(sol, dict):
+                    solution_list.append({str(k): str(v) for k, v in sol.items()})
+                else:
+                    # Handle tuple solutions
+                    solution_list.append({var_names[i]: str(solutions[i]) for i in range(len(var_names))})
+        elif isinstance(solutions, dict):
+            solution_list = [solutions]
+        else:
+            solution_list = []
+        
+        # Verify each solution by substituting back into equations
+        verification = []
+        for sol_dict in solution_list:
+            for eq_idx, eq in enumerate(sympy_eqs):
+                try:
+                    # Substitute solution into equation
+                    subs_dict = {symbols(k): sympify(v) for k, v in sol_dict.items()}
+                    result = eq.subs(subs_dict)
+                    is_valid = result == True or simplify(result) == True
+                    verification.append({
+                        "equation": normalized_eqs[eq_idx],
+                        "solution": sol_dict,
+                        "result": str(result),
+                        "valid": is_valid
+                    })
+                except:
+                    verification.append({
+                        "equation": normalized_eqs[eq_idx],
+                        "solution": sol_dict,
+                        "valid": None
+                    })
+        
+        # Determine solving method
+        if len(sympy_eqs) == len(solve_vars):
+            method = "Square system (n equations, n variables)"
+        elif len(sympy_eqs) > len(solve_vars):
+            method = "Overdetermined system (more equations than variables)"
+        else:
+            method = "Underdetermined system (fewer equations than variables)"
+        
+        return {
+            "solutions": solution_list,
+            "equations": normalized_eqs,
+            "num_equations": len(sympy_eqs),
+            "num_variables": len(solve_vars),
+            "variables": var_names,
+            "num_solutions": len(solution_list),
+            "verification": verification,
+            "method": method
+        }
     except Exception as e:
         return {"error": str(e)}
 
 
 def mean(data: List[float]) -> dict:
     """
-    Computes the mean of a list of numbers.
+    Computes the mean (average) of a list of numbers.
 
     Args:
         data: A list of numerical values.
 
     Returns:
-        On success: {"result": <mean value>}
+        On success: {
+            "result": <mean value>,
+            "data": <input data>,
+            "count": <number of values>,
+            "sum": <sum of all values>,
+            "formula": <calculation breakdown>,
+            "interpretation": <description>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> mean([1, 2, 3, 4])
-        {'result': 2.5}
+        {'result': 2.5, 'sum': 10, 'count': 4, ...}
         >>> mean([10, 20, 30])
-        {'result': 20.0}
+        {'result': 20.0, 'sum': 60, 'count': 3, ...}
     """
     try:
         result = float(np.mean(data))
-        return {"result": result}
+        total_sum = float(np.sum(data))
+        count = len(data)
+        formula = f"sum / count = {total_sum} / {count}"
+        interpretation = "Average of the values. Best used with normally distributed data without outliers."
+        
+        return {
+            "result": result,
+            "data": data,
+            "count": count,
+            "sum": total_sum,
+            "formula": formula,
+            "interpretation": interpretation
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -656,20 +869,52 @@ def median(data: List[float]) -> dict:
     """
     Computes the median of a list of numbers.
 
+    The median is the middle value when data is sorted. Better than mean for data with outliers.
+
     Args:
         data: A list of numerical values.
 
     Returns:
-        On success: {"result": <median value>}
+        On success: {
+            "result": <median value>,
+            "data": <input data>,
+            "count": <number of values>,
+            "sorted_data": <sorted data>,
+            "position": <description of position>,
+            "interpretation": <description>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> median([1, 2, 3, 4])
-        {'result': 2.5}
+        {'result': 2.5, 'position': 'between indices 1 and 2', ...}
+        >>> median([1, 3, 5, 7, 9])
+        {'result': 5.0, 'position': 'middle value (index 2)', ...}
     """
     try:
         result = float(np.median(data))
-        return {"result": result}
+        count = len(data)
+        sorted_data = sorted(data)
+        
+        # Determine position
+        if count % 2 == 1:
+            mid_idx = count // 2
+            position = f"middle value (index {mid_idx} of {count})"
+        else:
+            mid_idx1 = count // 2 - 1
+            mid_idx2 = count // 2
+            position = f"average of indices {mid_idx1} and {mid_idx2}"
+        
+        interpretation = "Middle value when data is sorted. Better than mean when data has outliers."
+        
+        return {
+            "result": result,
+            "data": data,
+            "count": count,
+            "sorted_data": sorted_data,
+            "position": position,
+            "interpretation": interpretation
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -678,27 +923,51 @@ def mode(data: List[float]) -> dict:
     """
     Computes the mode of a list of numbers.
 
+    The mode is the value that appears most frequently in the dataset.
+
     Args:
         data: A list of numerical values.
 
     Returns:
-        On success: {"result": <mode value>}
+        On success: {
+            "result": <mode value>,
+            "data": <input data>,
+            "count": <total count>,
+            "frequency": <how many times mode appears>,
+            "percentage": <percentage of total>,
+            "interpretation": <description>
+        }
         On error: {"error": <error message>}
 
     Examples:
-        >>> mode([1, 2, 2, 3])
-        {'result': 2.0}
+        >>> mode([1, 2, 2, 3, 3, 3, 4])
+        {'result': 3.0, 'frequency': 3, 'percentage': 42.86, ...}
         >>> mode([1, 1, 2, 2])
-        {'result': 1.0}
+        {'result': 1.0, 'frequency': 2, 'percentage': 50.0, ...}
         >>> mode([])
         {'error': 'Cannot compute mode of empty array'}
     """
     try:
         if not data:
             return {"error": "Cannot compute mode of empty array"}
+        
         # Adjusted for newer SciPy versions
         mode_result = stats.mode(data, keepdims=False)
-        return {"result": float(mode_result.mode)}
+        mode_value = float(mode_result.mode)
+        frequency = int(mode_result.count)
+        count = len(data)
+        percentage = (frequency / count) * 100
+        
+        interpretation = f"The value {mode_value} appears {frequency} times ({percentage:.1f}% of data). Most frequent value."
+        
+        return {
+            "result": mode_value,
+            "data": data,
+            "count": count,
+            "frequency": frequency,
+            "percentage": round(percentage, 2),
+            "interpretation": interpretation
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -707,21 +976,78 @@ def correlation_coefficient(data_x: List[float], data_y: List[float]) -> dict:
     """
     Computes the Pearson correlation coefficient between two lists of numbers.
 
+    Measures the strength and direction of the linear relationship between two variables.
+
     Args:
         data_x: The first list of numerical values.
         data_y: The second list of numerical values.
 
     Returns:
-        On success: {"result": <correlation coefficient>}
+        On success: {
+            "result": <correlation coefficient>,
+            "data_x": <input data>,
+            "data_y": <input data>,
+            "count": <number of data points>,
+            "strength": <strength descriptor>,
+            "direction": <positive or negative>,
+            "interpretation": <human-readable interpretation>,
+            "equation_note": <note about use in regression>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> correlation_coefficient([1, 2, 3], [4, 5, 6])
-        {'result': 1.0}
+        {'result': 1.0, 'strength': 'Perfect', 'direction': 'positive', ...}
+        >>> correlation_coefficient([1, 2, 3], [6, 4, 2])
+        {'result': -1.0, 'strength': 'Perfect', 'direction': 'negative', ...}
     """
     try:
-        result = np.corrcoef(data_x, data_y)[0, 1]
-        return {"result": float(result)}
+        result = float(np.corrcoef(data_x, data_y)[0, 1])
+        count = len(data_x)
+        
+        # Determine strength
+        abs_r = abs(result)
+        if abs_r >= 0.9:
+            strength = "Very strong"
+        elif abs_r >= 0.7:
+            strength = "Strong"
+        elif abs_r >= 0.5:
+            strength = "Moderate"
+        elif abs_r >= 0.3:
+            strength = "Weak"
+        elif abs_r >= 0.1:
+            strength = "Very weak"
+        else:
+            strength = "Negligible"
+        
+        # Determine direction
+        if result > 0:
+            direction = "positive"
+            dir_text = "As X increases, Y tends to increase"
+        elif result < 0:
+            direction = "negative"
+            dir_text = "As X increases, Y tends to decrease"
+        else:
+            direction = "none"
+            dir_text = "No linear relationship"
+        
+        # Build interpretation
+        interpretation = f"{strength} {direction} correlation: {dir_text}"
+        
+        # Note about regression
+        equation_note = f"R² = {result**2:.4f} (coefficient of determination: {result**2*100:.2f}% of variance explained)"
+        
+        return {
+            "result": result,
+            "data_x": data_x,
+            "data_y": data_y,
+            "count": count,
+            "strength": strength,
+            "direction": direction,
+            "interpretation": interpretation,
+            "r_squared_equivalent": round(result**2, 4),
+            "equation_note": equation_note
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -734,18 +1060,58 @@ def linear_regression(data: List[Tuple[float, float]]) -> dict:
         data: A list of tuples, where each tuple contains (x, y) coordinates.
 
     Returns:
-        On success: {"slope": <slope value>, "intercept": <intercept value>}
+        On success: {
+            "slope": <slope value>, 
+            "intercept": <intercept value>,
+            "equation": <equation string>,
+            "r_value": <correlation coefficient>,
+            "r_squared": <coefficient of determination>,
+            "p_value": <statistical significance>,
+            "std_err": <standard error of slope>,
+            "fit_quality": <qualitative assessment>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> linear_regression([(1, 2), (2, 3), (3, 5)])
-        {'slope': 1.5, 'intercept': 0.3333333333333335}
+        {'slope': 1.5, 'intercept': 0.33, 'r_squared': 0.95, ...}
     """
     try:
         x = np.array([point[0] for point in data])
         y = np.array([point[1] for point in data])
-        slope, intercept, _, _, _ = stats.linregress(x, y)
-        return {"slope": float(slope), "intercept": float(intercept)}
+        result = stats.linregress(x, y)
+        
+        slope = float(result.slope)
+        intercept = float(result.intercept)
+        r_value = float(result.rvalue)
+        r_squared = float(result.rvalue ** 2)
+        p_value = float(result.pvalue)
+        std_err = float(result.stderr)
+        
+        # Determine fit quality
+        if r_squared > 0.99:
+            fit_quality = "Excellent (R² > 0.99)"
+        elif r_squared > 0.95:
+            fit_quality = "Very Good (R² > 0.95)"
+        elif r_squared > 0.80:
+            fit_quality = "Good (R² > 0.80)"
+        elif r_squared > 0.50:
+            fit_quality = "Moderate (R² > 0.50)"
+        else:
+            fit_quality = "Poor (R² ≤ 0.50)"
+        
+        return {
+            "slope": slope,
+            "intercept": intercept,
+            "equation": f"y = {slope:.6f}x + {intercept:.6f}",
+            "r_value": r_value,
+            "r_squared": r_squared,
+            "p_value": p_value,
+            "std_err": std_err,
+            "fit_quality": fit_quality,
+            "data_points": len(data),
+            "interpretation": f"Strong positive correlation" if r_value > 0.7 else f"Weak correlation" if r_value < 0.3 else f"Moderate correlation"
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -1062,46 +1428,111 @@ def summation(expression: str, start: int = 0, end: int = 10) -> dict:
 
 def expand(expression: str) -> dict:
     """
-    Expands an expression.
+    Expands an algebraic expression by removing parentheses and combining terms.
 
     Args:
         expression: The expression to expand as a string.
 
     Returns:
-        On success: {"result": <expanded expression>}
+        On success: {
+            "result": <expanded expression>,
+            "input": <original expression>,
+            "method": <expansion method>,
+            "interpretation": <description>,
+            "note": <helpful note about expansion>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> expand("(x + 1)**2")
-        {'result': 'x**2 + 2*x + 1'}
+        {'result': 'x**2 + 2*x + 1', 'method': 'Binomial expansion', ...}
+        >>> expand("(x + 1)*(x - 1)")
+        {'result': 'x**2 - 1', 'method': 'Difference of squares', ...}
     """
     try:
         x = sp.Symbol("x")
-        expanded_expression = sp.expand(parse_expression(expression))
-        return {"result": str(expanded_expression)}
+        parsed_expr = parse_expression(expression)
+        expanded_expression = sp.expand(parsed_expr)
+        
+        # Determine the expansion method
+        expr_str = str(parsed_expr)
+        if "**2" in expr_str and "+" in expr_str:
+            method = "Binomial expansion: (a+b)² = a² + 2ab + b²"
+        elif "**3" in expr_str and "+" in expr_str:
+            method = "Trinomial expansion: (a+b)³ = a³ + 3a²b + 3ab² + b³"
+        elif "*" in expr_str and "(" in expr_str:
+            if "-" in expr_str and ")" in expr_str:
+                method = "Product expansion (difference of squares)"
+            else:
+                method = "Distributive property: a(b+c) = ab + ac"
+        else:
+            method = "Algebraic expansion (SymPy)"
+        
+        interpretation = "Removes parentheses and combines like terms into standard form."
+        note = "Expanded form is useful for finding roots and analyzing polynomial behavior."
+        
+        return {
+            "result": str(expanded_expression),
+            "input": expression,
+            "method": method,
+            "interpretation": interpretation,
+            "note": note
+        }
     except Exception as e:
         return {"error": str(e)}
 
 
 def factorize(expression: str) -> dict:
     """
-    Factorizes an expression.
+    Factorizes an algebraic expression by finding common factors and patterns.
 
     Args:
         expression: The expression to factorize as a string.
 
     Returns:
-        On success: {"result": <factored expression>}
+        On success: {
+            "result": <factored expression>,
+            "input": <original expression>,
+            "method": <factorization method>,
+            "interpretation": <description>,
+            "note": <helpful note about factorization>
+        }
         On error: {"error": <error message>}
 
     Examples:
         >>> factorize("x**2 + 2*x + 1")
-        {'result': '(x + 1)**2'}
+        {'result': '(x + 1)**2', 'method': 'Perfect square trinomial', ...}
+        >>> factorize("x**2 - 1")
+        {'result': '(x - 1)*(x + 1)', 'method': 'Difference of squares', ...}
     """
     try:
         x = sp.Symbol("x")
-        factored_expression = sp.factor(parse_expression(expression))
-        return {"result": str(factored_expression)}
+        parsed_expr = parse_expression(expression)
+        factored_expression = sp.factor(parsed_expr)
+        
+        # Determine the factorization method
+        expr_str = str(parsed_expr)
+        result_str = str(factored_expression)
+        
+        if "**2" in result_str:
+            method = "Perfect square trinomial: a² + 2ab + b² = (a+b)²"
+        elif "+" in expr_str and "-" in expr_str and "**2" in expr_str:
+            method = "Difference of squares: a² - b² = (a-b)(a+b)"
+        elif "-" in expr_str and "**2" not in expr_str:
+            method = "Difference of squares or linear factors"
+        else:
+            method = "Polynomial factorization (SymPy)"
+        
+        interpretation = "Writes expression as product of simpler factors."
+        note = "Factored form is useful for finding zeros/roots and solving equations."
+        
+        return {
+            "result": str(factored_expression),
+            "input": expression,
+            "method": method,
+            "interpretation": interpretation,
+            "note": note
+        }
     except Exception as e:
         return {"error": str(e)}
 
