@@ -228,7 +228,7 @@ def solve_equation(equation: str) -> dict:
                 left_result = left.subs(x, sol)
                 right_result = right.subs(x, sol)
                 # Check if they're equal (within floating point tolerance for numerical solutions)
-                is_valid = simplify(left_result - right_result) == 0
+                is_valid = sympy_simplify(left_result - right_result) == 0
                 verification.append({
                     "solution": str(sol),
                     "left_side": str(left_result),
@@ -742,7 +742,7 @@ def solve_system(equations: List[str], variables: List[str] = None) -> dict:
                     # Substitute solution into equation
                     subs_dict = {symbols(k): sympify(v) for k, v in sol_dict.items()}
                     result = eq.subs(subs_dict)
-                    is_valid = result == True or simplify(result) == True
+                    is_valid = result == True or sympy_simplify(result) == True
                     verification.append({
                         "equation": normalized_eqs[eq_idx],
                         "solution": sol_dict,
