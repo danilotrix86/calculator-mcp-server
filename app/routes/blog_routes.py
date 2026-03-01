@@ -58,7 +58,7 @@ async def warmup():
 @router.get("/posts")
 async def get_posts(
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=1000)
 ):
     """Get all published blog posts with pagination."""
     return await blog_service.get_all_posts(page, limit)
