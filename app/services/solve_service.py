@@ -104,7 +104,7 @@ class SolveService:
         query_id = await self.supabase_service.save_query(normalized_text, user_id=user_id)
         
         # Process the request with OpenAI
-        result = await solve_with_openai(query_text=payload.text, api_key_override=api_key_override)
+        result = await solve_with_openai(query_text=payload.text, spoken_text=getattr(payload, 'spoken_text', None), api_key_override=api_key_override)
         
         if result.error:
             logging.error("Solve request error: %s", result.error)
@@ -129,6 +129,8 @@ class SolveService:
 
     async def solve_stream(self, payload: SolveRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
         logging.info("Processing streaming solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
+        if payload.spoken_text:
+            logging.info("Spoken text provided: %s", payload.spoken_text[:100] + "..." if len(payload.spoken_text) > 100 else payload.spoken_text)
         
         try:
             normalized_text = normalize_expression(payload.text)
@@ -166,7 +168,7 @@ class SolveService:
         tool_used_ref = {"name": None}
         
         try:
-            async for chunk in solve_with_openai_streaming(query_text=payload.text, api_key_override=api_key_override, force_tool=True):
+            async for chunk in solve_with_openai_streaming(query_text=payload.text, spoken_text=getattr(payload, 'spoken_text', None), api_key_override=api_key_override, force_tool=True):
                 self._parse_stream_chunk(chunk, complete_response, tool_used_ref)
                 yield f"data: {chunk}\n\n"
                 

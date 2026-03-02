@@ -157,7 +157,18 @@ async def extract_formula_from_image(image_data: str, api_key_override: Optional
         return error_msg
 
 
-async def solve_with_openai(query_text: str, api_key_override: Optional[str] = None) -> SolveResponse:
+def _build_user_content(query_text: str, spoken_text: Optional[str] = None) -> str:
+    """Combine LaTeX and its spoken description into an unambiguous user message."""
+    if spoken_text and spoken_text.strip():
+        return (
+            f"LaTeX: {query_text}\n\n"
+            f"Descrizione in linguaggio naturale: {spoken_text.strip()}\n\n"
+            f"Usa la descrizione in linguaggio naturale per interpretare correttamente il LaTeX."
+        )
+    return query_text
+
+
+async def solve_with_openai(query_text: str, api_key_override: Optional[str] = None, spoken_text: Optional[str] = None) -> SolveResponse:
     if not query_text.strip():
         return SolveResponse(answer="", error="Empty query")
 
@@ -166,7 +177,7 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
             "role": "system",
             "content": MATH_SOLVER_SYSTEM_PROMPT
         },
-        {"role": "user", "content": query_text},
+        {"role": "user", "content": _build_user_content(query_text, spoken_text)},
     ]
 
     first = await _chat_once(messages, api_key_override=api_key_override)
@@ -239,12 +250,13 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
     )
 
 
-async def solve_with_openai_streaming(query_text: str, api_key_override: Optional[str] = None, force_tool: bool = False) -> AsyncGenerator[str, None]:
+async def solve_with_openai_streaming(query_text: str, api_key_override: Optional[str] = None, force_tool: bool = False, spoken_text: Optional[str] = None) -> AsyncGenerator[str, None]:
     """
     Stream the solution as it's being generated, with support for forcing tool usage.
     
     Args:
-        query_text: The math problem to solve
+        query_text: The math problem to solve (LaTeX or plain text)
+        spoken_text: Optional human-readable description of the expression (from MathLive)
         api_key_override: Optional API key to use instead of the configured one
         force_tool: If True, force the model to use a tool
         
@@ -260,7 +272,7 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
             "role": "system",
             "content": MATH_SOLVER_SYSTEM_PROMPT
         },
-        {"role": "user", "content": query_text},
+        {"role": "user", "content": _build_user_content(query_text, spoken_text)},
     ]
 
     # First call to get the tool call

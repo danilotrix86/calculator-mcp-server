@@ -4,6 +4,7 @@ from typing import Optional
 
 class SolveRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    spoken_text: Optional[str] = Field(default=None, max_length=2000)
 
 
 class SolveImageRequest(BaseModel):
