@@ -12,12 +12,14 @@ from app.routes.admin_routes import router as admin_router
 from app.routes.sitemap_routes import router as sitemap_router
 from app.routes.matrix_routes import router as matrix_router
 from app.services.openai_service import init_openai_client, shutdown_openai_client
+from app.services.supabase_service import init_async_supabase_client
 from app.middleware.logging import add_logging_middleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_openai_client()
+    await init_async_supabase_client()
     try:
         yield
     finally:

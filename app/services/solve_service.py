@@ -48,10 +48,10 @@ class SolveService:
             return None
         return payload
 
-    async def _save_image_hash_cache(self, image_hash_key: str, formula: str, response: str, tool_used: Optional[str]) -> None:
+    async def _save_image_hash_cache(self, image_hash_key: str, formula: str, response: str, tool_used: Optional[str], user_id: Optional[str] = None) -> None:
         if not response or not response.strip():
             return
-        cache_query_id = await self.supabase_service.save_query(image_hash_key)
+        cache_query_id = await self.supabase_service.save_query(image_hash_key, user_id=user_id)
         if not cache_query_id:
             return
         cache_payload = self._encode_image_hash_cache_response(formula=formula, response=response, tool_used=tool_used)
@@ -76,7 +76,7 @@ class SolveService:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    async def solve(self, payload: SolveRequest, api_key_override: Optional[str] = None) -> SolveResponse:
+    async def solve(self, payload: SolveRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> SolveResponse:
         logging.info("Processing solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
         
         try:
@@ -101,7 +101,7 @@ class SolveService:
             )
             
         # Store the question in Supabase
-        query_id = await self.supabase_service.save_query(normalized_text)
+        query_id = await self.supabase_service.save_query(normalized_text, user_id=user_id)
         
         # Process the request with OpenAI
         result = await solve_with_openai(query_text=payload.text, api_key_override=api_key_override)
@@ -127,7 +127,7 @@ class SolveService:
         
         return result
 
-    async def solve_stream(self, payload: SolveRequest, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
+    async def solve_stream(self, payload: SolveRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
         logging.info("Processing streaming solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
         
         try:
@@ -159,7 +159,7 @@ class SolveService:
             return
 
         # Store the question in Supabase
-        query_id = await self.supabase_service.save_query(normalized_text)
+        query_id = await self.supabase_service.save_query(normalized_text, user_id=user_id)
         
         # Store the complete response to update Supabase later
         complete_response = []
@@ -184,11 +184,11 @@ class SolveService:
             
             yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
 
-    async def solve_image(self, payload: SolveImageRequest, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
+    async def solve_image(self, payload: SolveImageRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
         logging.info("Processing image solve request")
         
         # Store the question in Supabase (initially as "Image upload")
-        query_id = await self.supabase_service.save_query("Image upload (formula extraction)")
+        query_id = await self.supabase_service.save_query("Image upload (formula extraction)", user_id=user_id)
         image_hash = self._build_image_hash(payload.image_data)
         image_hash_key = self._image_hash_cache_key(image_hash)
         
@@ -260,6 +260,7 @@ class SolveService:
                         formula=formula,
                         response=response_text,
                         tool_used=tool_used,
+                        user_id=user_id,
                     )
 
                 if tool_used:
@@ -302,6 +303,7 @@ class SolveService:
                         formula=formula,
                         response=final_response,
                         tool_used=tool_used_ref["name"],
+                        user_id=user_id,
                     )
                         
             except Exception as e:

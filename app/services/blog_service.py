@@ -1,28 +1,26 @@
 import logging
 from typing import Optional, List, Dict, Any
-from app.services.supabase_service import supabase
-from fastapi.concurrency import run_in_threadpool
+from app.services.supabase_service import get_async_supabase_client
 
 
 async def get_all_posts(page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     Get all published blog posts with pagination.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return {"posts": [], "total": 0}
     
     try:
         start = (page - 1) * limit
         end = start + limit - 1
         
-        query = supabase.table("blog_posts") \
+        result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)", count="exact") \
             .eq("published", True) \
             .order("created_at", desc=True) \
             .range(start, end) \
-            
-        
-        result = await run_in_threadpool(query.execute)
+            .execute()
         
         return {
             "posts": result.data or [],
@@ -37,18 +35,18 @@ async def get_featured_posts(limit: int = 3) -> List[Dict[str, Any]]:
     """
     Get featured published blog posts.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return []
     
     try:
-        query = supabase.table("blog_posts") \
+        result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("published", True) \
             .eq("featured", True) \
             .order("created_at", desc=True) \
             .limit(limit) \
-            
-        result = await run_in_threadpool(query.execute)
+            .execute()
         
         return result.data or []
     except Exception as e:
@@ -60,17 +58,17 @@ async def get_post_by_slug(slug: str) -> Optional[Dict[str, Any]]:
     """
     Get a single blog post by slug.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return None
     
     try:
-        query = supabase.table("blog_posts") \
+        result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("slug", slug) \
             .eq("published", True) \
             .single() \
-            
-        result = await run_in_threadpool(query.execute)
+            .execute()
         
         return result.data
     except Exception as e:
@@ -82,36 +80,32 @@ async def get_posts_by_category(category_slug: str, page: int = 1, limit: int = 
     """
     Get posts by category slug.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return {"posts": [], "category": None, "total": 0}
     
     try:
-        # First get the category
-        query = supabase.table("blog_categories") \
+        cat_result = await client.table("blog_categories") \
             .select("*") \
             .eq("slug", category_slug) \
             .single() \
-            
-        cat_result = await run_in_threadpool(query.execute)
+            .execute()
         
         if not cat_result.data:
             return {"posts": [], "category": None, "total": 0}
         
         category = cat_result.data
         
-        # Then get posts
         start = (page - 1) * limit
         end = start + limit - 1
         
-        query = supabase.table("blog_posts") \
+        posts_result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)", count="exact") \
             .eq("category_id", category["id"]) \
             .eq("published", True) \
             .order("created_at", desc=True) \
             .range(start, end) \
-            
-        
-        posts_result = await run_in_threadpool(query.execute)
+            .execute()
         
         return {
             "posts": posts_result.data or [],
@@ -127,34 +121,29 @@ async def get_all_categories() -> List[Dict[str, Any]]:
     """
     Get all categories with post counts.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return []
     
     try:
-        # Get categories
-        query = supabase.table("blog_categories") \
+        cat_result = await client.table("blog_categories") \
             .select("*") \
             .order("name") \
-            
-        cat_result = await run_in_threadpool(query.execute)
+            .execute()
         
         categories = cat_result.data or []
         
-        # Get post counts
-        query = supabase.table("blog_posts") \
+        posts_result = await client.table("blog_posts") \
             .select("category_id") \
             .eq("published", True) \
-            
-        posts_result = await run_in_threadpool(query.execute)
+            .execute()
         
-        # Calculate counts
         count_map = {}
         for post in posts_result.data or []:
             cat_id = post.get("category_id")
             if cat_id:
                 count_map[cat_id] = count_map.get(cat_id, 0) + 1
         
-        # Add counts to categories
         for cat in categories:
             cat["post_count"] = count_map.get(cat["id"], 0)
         
@@ -168,17 +157,17 @@ async def get_recent_posts(limit: int = 5) -> List[Dict[str, Any]]:
     """
     Get recent published posts.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return []
     
     try:
-        query = supabase.table("blog_posts") \
+        result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("published", True) \
             .order("created_at", desc=True) \
             .limit(limit) \
-            
-        result = await run_in_threadpool(query.execute)
+            .execute()
         
         return result.data or []
     except Exception as e:
@@ -190,19 +179,19 @@ async def get_related_posts(post_id: str, category_id: str, limit: int = 3) -> L
     """
     Get related posts from the same category.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return []
     
     try:
-        query = supabase.table("blog_posts") \
+        result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("category_id", category_id) \
             .eq("published", True) \
             .neq("id", post_id) \
             .order("created_at", desc=True) \
             .limit(limit) \
-            
-        result = await run_in_threadpool(query.execute)
+            .execute()
         
         return result.data or []
     except Exception as e:
@@ -214,30 +203,20 @@ async def search_posts(query: str, limit: int = 20) -> List[Dict[str, Any]]:
     """
     Search posts by title, excerpt, or content.
     """
-    if not supabase:
+    client = get_async_supabase_client()
+    if not client:
         return []
     
     try:
-        query = supabase.table("blog_posts") \
+        result = await client.table("blog_posts") \
             .select("*, category:blog_categories(*), author:blog_authors(*)") \
             .eq("published", True) \
             .or_(f"title.ilike.%{query}%,excerpt.ilike.%{query}%,content.ilike.%{query}%") \
             .order("created_at", desc=True) \
             .limit(limit) \
-            
-        result = await run_in_threadpool(query.execute)
+            .execute()
         
         return result.data or []
     except Exception as e:
         logging.error(f"Error searching posts: {str(e)}")
         return []
-
-
-
-
-
-
-
-
-
-

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import os
 import logging
 from typing import Optional, Dict, Any
-from supabase import create_client, Client
+from supabase import create_client, acreate_client, Client, AsyncClient
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 
@@ -31,13 +31,16 @@ class SupabaseService:
         else:
             logging.warning("Supabase credentials not found in environment variables")
 
-    async def save_query(self, question: str) -> Optional[str]:
+    async def save_query(self, question: str, user_id: Optional[str] = None) -> Optional[str]:
         """Save a new query to Supabase."""
         if not self.client:
             return None
         
         try:
-            query = self.client.table("user_queries").insert({"question": question})
+            row: Dict[str, Any] = {"question": question}
+            if user_id:
+                row["user_id"] = user_id
+            query = self.client.table("user_queries").insert(row)
             result = await run_in_threadpool(query.execute)
             query_id = result.data[0]["id"] if result.data else None
             if query_id:
@@ -146,3 +149,24 @@ def get_supabase_service() -> SupabaseService:
 
 # For backward compatibility with modules that haven't been refactored yet
 supabase = get_supabase_service().client
+
+
+# Async client for concurrent-safe database operations
+_async_supabase_client: Optional[AsyncClient] = None
+
+
+async def init_async_supabase_client() -> None:
+    """Initialize the async Supabase client. Call from FastAPI lifespan."""
+    global _async_supabase_client
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    if url and key:
+        _async_supabase_client = await acreate_client(url, key)
+        logging.info("Async Supabase client initialized")
+    else:
+        logging.warning("Async Supabase client not initialized: missing credentials")
+
+
+def get_async_supabase_client() -> Optional[AsyncClient]:
+    """Return the shared async Supabase client."""
+    return _async_supabase_client
