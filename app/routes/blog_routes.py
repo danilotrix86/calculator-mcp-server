@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 from datetime import datetime
 from app.services import blog_service
@@ -104,7 +104,7 @@ async def get_post_by_slug(slug: str):
     """Get a single blog post by slug."""
     post = await blog_service.get_post_by_slug(slug)
     if not post:
-        return {"error": "Post not found", "post": None}
+        raise HTTPException(status_code=404, detail="Post not found")
     return {"post": post}
 
 
