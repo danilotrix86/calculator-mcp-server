@@ -88,6 +88,15 @@ async def search_posts(
     return {"posts": posts}
 
 
+@router.get("/posts/{slug}")
+async def get_post_by_slug(slug: str):
+    """Get a single blog post by slug."""
+    post = await blog_service.get_post_by_slug(slug)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return {"post": post}
+
+
 @router.get("/posts/related/{post_id}")
 async def get_related_posts(
     post_id: str,
@@ -97,15 +106,6 @@ async def get_related_posts(
     """Get related posts from the same category."""
     posts = await blog_service.get_related_posts(post_id, category_id, limit)
     return {"posts": posts}
-
-
-@router.get("/posts/{slug}")
-async def get_post_by_slug(slug: str):
-    """Get a single blog post by slug."""
-    post = await blog_service.get_post_by_slug(slug)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    return {"post": post}
 
 
 @router.get("/categories")
