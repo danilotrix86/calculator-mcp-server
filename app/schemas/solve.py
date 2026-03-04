@@ -29,3 +29,7 @@ class SolveResponse(BaseModel):
     tool_called: Optional[str] = None
     tool_args: Optional[dict] = None
     error: Optional[str] = None
+
+
+class ExtractImageResponse(BaseModel):
+    formula: str

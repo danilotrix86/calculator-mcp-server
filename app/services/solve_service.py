@@ -4,7 +4,7 @@ import hashlib
 from typing import AsyncIterator, Optional
 
 from fastapi import HTTPException, Depends
-from app.schemas.solve import SolveRequest, SolveResponse, SolveImageRequest
+from app.schemas.solve import SolveRequest, SolveResponse, SolveImageRequest, ExtractImageResponse
 from app.services.openai_service import solve_with_openai, solve_with_openai_streaming, extract_formula_from_image
 from app.services.supabase_service import SupabaseService, get_supabase_service
 from app.services.math_service import normalize_expression
@@ -51,7 +51,9 @@ class SolveService:
     async def _save_image_hash_cache(self, image_hash_key: str, formula: str, response: str, tool_used: Optional[str], user_id: Optional[str] = None) -> None:
         if not response or not response.strip():
             return
-        cache_query_id = await self.supabase_service.save_query(image_hash_key, user_id=user_id)
+        cache_query_id = await self.supabase_service.save_query(
+            image_hash_key, user_id=user_id, query_type="image_hash_cache",
+        )
         if not cache_query_id:
             return
         cache_payload = self._encode_image_hash_cache_response(formula=formula, response=response, tool_used=tool_used)
@@ -101,7 +103,10 @@ class SolveService:
             )
             
         # Store the question in Supabase
-        query_id = await self.supabase_service.save_query(normalized_text, user_id=user_id)
+        query_id = await self.supabase_service.save_query(
+            normalized_text, user_id=user_id,
+            query_text=payload.text, query_type="text",
+        )
         
         # Process the request with OpenAI
         result = await solve_with_openai(query_text=payload.text, spoken_text=getattr(payload, 'spoken_text', None), api_key_override=api_key_override)
@@ -161,7 +166,10 @@ class SolveService:
             return
 
         # Store the question in Supabase
-        query_id = await self.supabase_service.save_query(normalized_text, user_id=user_id)
+        query_id = await self.supabase_service.save_query(
+            normalized_text, user_id=user_id,
+            query_text=payload.text, query_type="text",
+        )
         
         # Store the complete response to update Supabase later
         complete_response = []
@@ -186,11 +194,35 @@ class SolveService:
             
             yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
 
+    async def extract_image(self, payload: SolveImageRequest, api_key_override: Optional[str] = None) -> ExtractImageResponse:
+        """Extract formula from image without solving it."""
+        logging.info("Processing image extraction request (extract-only)")
+
+        image_hash = self._build_image_hash(payload.image_data)
+        image_hash_key = self._image_hash_cache_key(image_hash)
+
+        cached_by_hash = await self.supabase_service.find_cached_response(image_hash_key)
+        if cached_by_hash:
+            decoded = self._decode_image_hash_cache_response(cached_by_hash.get("response", ""))
+            if decoded and decoded.get("formula"):
+                logging.info("Returning cached formula for image hash")
+                return ExtractImageResponse(formula=decoded["formula"])
+
+        formula = await extract_formula_from_image(image_data=payload.image_data, api_key_override=api_key_override)
+
+        if formula.startswith("Error"):
+            raise HTTPException(status_code=400, detail=formula)
+
+        return ExtractImageResponse(formula=formula)
+
     async def solve_image(self, payload: SolveImageRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
         logging.info("Processing image solve request")
         
         # Store the question in Supabase (initially as "Image upload")
-        query_id = await self.supabase_service.save_query("Image upload (formula extraction)", user_id=user_id)
+        query_id = await self.supabase_service.save_query(
+            "Image upload (formula extraction)", user_id=user_id,
+            query_text="Image upload (formula extraction)", query_type="image",
+        )
         image_hash = self._build_image_hash(payload.image_data)
         image_hash_key = self._image_hash_cache_key(image_hash)
         

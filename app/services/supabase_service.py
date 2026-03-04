@@ -31,7 +31,13 @@ class SupabaseService:
         else:
             logging.warning("Supabase credentials not found in environment variables")
 
-    async def save_query(self, question: str, user_id: Optional[str] = None) -> Optional[str]:
+    async def save_query(
+        self,
+        question: str,
+        user_id: Optional[str] = None,
+        query_text: Optional[str] = None,
+        query_type: Optional[str] = None,
+    ) -> Optional[str]:
         """Save a new query to Supabase."""
         if not self.client:
             return None
@@ -40,6 +46,10 @@ class SupabaseService:
             row: Dict[str, Any] = {"question": question}
             if user_id:
                 row["user_id"] = user_id
+            if query_text is not None:
+                row["query_text"] = query_text
+            if query_type is not None:
+                row["query_type"] = query_type
             query = self.client.table("user_queries").insert(row)
             result = await run_in_threadpool(query.execute)
             query_id = result.data[0]["id"] if result.data else None
