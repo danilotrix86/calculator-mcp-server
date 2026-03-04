@@ -6,6 +6,7 @@ load_dotenv()
 
 class RateLimitConfig:
     SOLVE = os.environ.get("RATE_LIMIT_SOLVE", "10/minute")
+    CHAT = os.environ.get("RATE_LIMIT_CHAT", "30/minute")
     MATRIX = os.environ.get("RATE_LIMIT_MATRIX", "30/minute")
     BLOG = os.environ.get("RATE_LIMIT_BLOG", "60/minute")
     ADMIN = os.environ.get("RATE_LIMIT_ADMIN", "20/minute")
