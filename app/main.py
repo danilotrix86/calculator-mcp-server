@@ -4,6 +4,8 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler as _default_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.routes.solve_routes import router as solve_router
 from app.routes.health_routes import router as health_router
@@ -14,6 +16,7 @@ from app.routes.matrix_routes import router as matrix_router
 from app.services.openai_service import init_openai_client, shutdown_openai_client
 from app.services.supabase_service import init_async_supabase_client
 from app.middleware.logging import add_logging_middleware
+from app.middleware.rate_limit import limiter, rate_limit_exceeded_handler
 
 
 @asynccontextmanager
@@ -55,6 +58,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
     add_logging_middleware(application)
     application.include_router(solve_router, prefix="/api")
     application.include_router(health_router, prefix="/api")

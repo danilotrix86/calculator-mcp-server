@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 import logging
 from app.services.supabase_service import SupabaseService, get_supabase_service
+from app.middleware.rate_limit import limiter
+from app.config import rate_limit_config
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health/supabase")
-async def supabase_health(supabase_service: SupabaseService = Depends(get_supabase_service)):
+@limiter.limit(rate_limit_config.HEALTH)
+async def supabase_health(request: Request, supabase_service: SupabaseService = Depends(get_supabase_service)):
     """Check if the Supabase connection is working"""
     if not supabase_service.client:
         return {

@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+from app.config import rate_limit_config
 
 
 class SolveRequest(BaseModel):
@@ -9,6 +11,16 @@ class SolveRequest(BaseModel):
 
 class SolveImageRequest(BaseModel):
     image_data: str = Field(description="Base64 encoded image data")
+
+    @field_validator("image_data")
+    @classmethod
+    def validate_image_size(cls, v: str) -> str:
+        max_bytes = rate_limit_config.IMAGE_MAX_SIZE_BYTES
+        if len(v) > max_bytes:
+            raise ValueError(
+                f"Image data exceeds maximum size of {max_bytes // (1024 * 1024)} MB"
+            )
+        return v
 
 
 class SolveResponse(BaseModel):

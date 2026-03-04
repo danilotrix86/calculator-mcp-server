@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 import logging
 
 from app.schemas.matrix import (
@@ -8,12 +8,15 @@ from app.schemas.matrix import (
     MatrixPropertiesResponse
 )
 from app.services.matrix_service import perform_matrix_operation, get_matrix_properties
+from app.middleware.rate_limit import limiter
+from app.config import rate_limit_config
 
 router = APIRouter(tags=["matrix"])
 
 
 @router.post("/matrix/operation", response_model=MatrixOperationResponse)
-async def matrix_operation_endpoint(payload: MatrixOperationRequest) -> MatrixOperationResponse:
+@limiter.limit(rate_limit_config.MATRIX)
+async def matrix_operation_endpoint(request: Request, payload: MatrixOperationRequest) -> MatrixOperationResponse:
     """
     Perform a matrix operation
     
@@ -63,7 +66,8 @@ async def matrix_operation_endpoint(payload: MatrixOperationRequest) -> MatrixOp
 
 
 @router.post("/matrix/properties", response_model=MatrixPropertiesResponse)
-async def matrix_properties_endpoint(payload: MatrixPropertiesRequest) -> MatrixPropertiesResponse:
+@limiter.limit(rate_limit_config.MATRIX)
+async def matrix_properties_endpoint(request: Request, payload: MatrixPropertiesRequest) -> MatrixPropertiesResponse:
     """
     Get comprehensive properties of a matrix
     """

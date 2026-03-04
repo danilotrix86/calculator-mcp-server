@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Query, Depends, HTTPException, Request
 from typing import Optional
 from pydantic import BaseModel
 from app.middleware.auth import verify_admin
+from app.middleware.rate_limit import limiter
+from app.config import rate_limit_config
 from app.services import blog_admin_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -67,7 +69,8 @@ class PostUpdate(BaseModel):
 # ============== AUTH CHECK ==============
 
 @router.get("/check")
-async def check_auth(username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def check_auth(request: Request, username: str = Depends(verify_admin)):
     """Check if admin credentials are valid."""
     return {"authenticated": True, "username": username}
 
@@ -75,14 +78,16 @@ async def check_auth(username: str = Depends(verify_admin)):
 # ============== AUTHORS ==============
 
 @router.get("/authors")
-async def get_authors(username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def get_authors(request: Request, username: str = Depends(verify_admin)):
     """Get all authors."""
     authors = await blog_admin_service.get_all_authors()
     return {"authors": authors}
 
 
 @router.post("/authors")
-async def create_author(data: AuthorCreate, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def create_author(request: Request, data: AuthorCreate, username: str = Depends(verify_admin)):
     """Create a new author."""
     author = await blog_admin_service.create_author(data.model_dump())
     if not author:
@@ -93,14 +98,16 @@ async def create_author(data: AuthorCreate, username: str = Depends(verify_admin
 # ============== CATEGORIES ==============
 
 @router.get("/categories")
-async def get_categories(username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def get_categories(request: Request, username: str = Depends(verify_admin)):
     """Get all categories."""
     categories = await blog_admin_service.get_all_categories_admin()
     return {"categories": categories}
 
 
 @router.post("/categories")
-async def create_category(data: CategoryCreate, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def create_category(request: Request, data: CategoryCreate, username: str = Depends(verify_admin)):
     """Create a new category."""
     category = await blog_admin_service.create_category(data.model_dump())
     if not category:
@@ -109,7 +116,8 @@ async def create_category(data: CategoryCreate, username: str = Depends(verify_a
 
 
 @router.put("/categories/{category_id}")
-async def update_category(category_id: str, data: CategoryUpdate, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def update_category(request: Request, category_id: str, data: CategoryUpdate, username: str = Depends(verify_admin)):
     """Update a category."""
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     category = await blog_admin_service.update_category(category_id, update_data)
@@ -119,7 +127,8 @@ async def update_category(category_id: str, data: CategoryUpdate, username: str 
 
 
 @router.delete("/categories/{category_id}")
-async def delete_category(category_id: str, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def delete_category(request: Request, category_id: str, username: str = Depends(verify_admin)):
     """Delete a category."""
     success = await blog_admin_service.delete_category(category_id)
     if not success:
@@ -130,7 +139,9 @@ async def delete_category(category_id: str, username: str = Depends(verify_admin
 # ============== POSTS ==============
 
 @router.get("/posts")
+@limiter.limit(rate_limit_config.ADMIN)
 async def get_posts(
+    request: Request,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     username: str = Depends(verify_admin)
@@ -140,7 +151,8 @@ async def get_posts(
 
 
 @router.get("/posts/{post_id}")
-async def get_post(post_id: str, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def get_post(request: Request, post_id: str, username: str = Depends(verify_admin)):
     """Get a single post by ID."""
     post = await blog_admin_service.get_post_by_id(post_id)
     if not post:
@@ -149,7 +161,8 @@ async def get_post(post_id: str, username: str = Depends(verify_admin)):
 
 
 @router.post("/posts")
-async def create_post(data: PostCreate, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def create_post(request: Request, data: PostCreate, username: str = Depends(verify_admin)):
     """Create a new post."""
     try:
         post = await blog_admin_service.create_post(data.model_dump())
@@ -161,7 +174,8 @@ async def create_post(data: PostCreate, username: str = Depends(verify_admin)):
 
 
 @router.put("/posts/{post_id}")
-async def update_post(post_id: str, data: PostUpdate, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def update_post(request: Request, post_id: str, data: PostUpdate, username: str = Depends(verify_admin)):
     """Update a post."""
     try:
         update_data = {k: v for k, v in data.model_dump().items() if v is not None}
@@ -174,7 +188,8 @@ async def update_post(post_id: str, data: PostUpdate, username: str = Depends(ve
 
 
 @router.delete("/posts/{post_id}")
-async def delete_post(post_id: str, username: str = Depends(verify_admin)):
+@limiter.limit(rate_limit_config.ADMIN)
+async def delete_post(request: Request, post_id: str, username: str = Depends(verify_admin)):
     """Delete a post."""
     success = await blog_admin_service.delete_post(post_id)
     if not success:
