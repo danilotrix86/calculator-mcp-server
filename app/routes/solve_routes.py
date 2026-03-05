@@ -33,7 +33,6 @@ async def solve_stream_endpoint(
     solve_service: SolveService = Depends(get_solve_service)
 ) -> StreamingResponse:
     """Stream the solution as it's being generated"""
-    logging.info("Starting streaming response")
     return StreamingResponse(
         solve_service.solve_stream(payload=payload, user_id=x_user_id, api_key_override=x_openai_api_key),
         media_type="text/event-stream"
@@ -50,7 +49,6 @@ async def extract_image_endpoint(
     solve_service: SolveService = Depends(get_solve_service)
 ) -> ExtractImageResponse:
     """Extract formula from image without solving it"""
-    logging.info("Starting image extraction (extract-only)")
     return await solve_service.extract_image(payload=payload, api_key_override=x_openai_api_key)
 
 
@@ -64,7 +62,6 @@ async def solve_image_endpoint(
     solve_service: SolveService = Depends(get_solve_service)
 ) -> StreamingResponse:
     """Extract formula from image and stream the solution"""
-    logging.info("Starting image processing and streaming response")
     return StreamingResponse(
         solve_service.solve_image(payload=payload, user_id=x_user_id, api_key_override=x_openai_api_key),
         media_type="text/event-stream"

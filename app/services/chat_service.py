@@ -91,14 +91,8 @@ async def chat_with_openai_streaming(
                         piece = chunk.choices[0].delta.content
                         chunk_count += 1
                         buffer += piece
-                        if chunk_count <= 20 or chunk_count % 50 == 0:
-                            logging.info(f"[chat-stream] chunk#{chunk_count} ({len(piece)}ch): {repr(piece)}")
                         yield json.dumps({"type": "content_chunk", "content": piece})
 
-                logging.info(f"[chat-stream] COMPLETE — {chunk_count} chunks, {len(buffer)} chars")
-                logging.info(f"[chat-stream] FULL RESPONSE:\n{buffer[:2000]}")
-                if len(buffer) > 2000:
-                    logging.info(f"[chat-stream] ... (truncated, {len(buffer) - 2000} more chars)")
                 yield json.dumps({"type": "content_complete", "content": buffer})
         except Exception as exc:
             logging.error(f"[chat] Streaming error (no-tool path): {exc}")
@@ -166,14 +160,8 @@ async def chat_with_openai_streaming(
                     piece = chunk.choices[0].delta.content
                     chunk_count += 1
                     buffer += piece
-                    if chunk_count <= 20 or chunk_count % 50 == 0:
-                        logging.info(f"[chat-stream-tool] chunk#{chunk_count} ({len(piece)}ch): {repr(piece)}")
                     yield json.dumps({"type": "content_chunk", "content": piece})
 
-            logging.info(f"[chat-stream-tool] COMPLETE — {chunk_count} chunks, {len(buffer)} chars")
-            logging.info(f"[chat-stream-tool] FULL RESPONSE:\n{buffer[:2000]}")
-            if len(buffer) > 2000:
-                logging.info(f"[chat-stream-tool] ... (truncated, {len(buffer) - 2000} more chars)")
             yield json.dumps({"type": "content_complete", "content": buffer})
     except Exception as exc:
         logging.error(f"[chat] Streaming error (tool path): {exc}")

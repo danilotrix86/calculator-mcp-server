@@ -74,11 +74,6 @@ async def _chat_once(messages: List[Dict[str, str]], api_key_override: Optional[
         tool_choice = "required" if force_tool else "auto"
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
-        # Log the system prompt being used (first 200 chars)
-        system_msg = next((m for m in messages if m.get("role") == "system"), None)
-        if system_msg:
-            logging.info(f"🤖 Using model: {model}, System prompt (first 200 chars): {system_msg.get('content', '')[:200]}...")
-        
         resp = await client.chat.completions.create(
             model=model,
             messages=messages,
@@ -149,7 +144,6 @@ async def extract_formula_from_image(image_data: str, api_key_override: Optional
         
         extracted_text = response.choices[0].message.content
         result = extracted_text.strip()
-        logging.info(f"Successfully extracted formula: {result[:50]}{'...' if len(result) > 50 else ''}")
         return result
     except Exception as e:
         error_msg = f"Error processing image: {str(e)}"
@@ -199,12 +193,6 @@ async def solve_with_openai(query_text: str, api_key_override: Optional[str] = N
 
     # Execute tool
     exec_result = await execute_tool_call(tool_name, tool_args_str)
-    
-    try:
-        parsed_result = json.loads(exec_result)
-        logging.info("Tool result: %s", parsed_result)
-    except Exception as e:
-        logging.info("Tool result (raw): %s", exec_result)
 
     # Provide tool result back to the model
     messages.append({
@@ -318,10 +306,8 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
         # Notify of tool result
         try:
             parsed_result = json.loads(exec_result)
-            logging.info(f"Streaming tool result for {tool_name} ({tool_id}): {parsed_result}")
             yield json.dumps({"type": "tool_result", "tool_id": tool_id, "result": parsed_result})
         except Exception as e:
-            logging.info(f"Streaming tool result (raw) for {tool_name} ({tool_id}): {exec_result}")
             yield json.dumps({"type": "tool_result", "tool_id": tool_id, "result": exec_result})
 
         # Add tool response message for this specific tool call
@@ -357,19 +343,7 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
                     content_chunk = chunk.choices[0].delta.content
                     chunk_count += 1
                     buffer += content_chunk
-                    if chunk_count <= 20 or chunk_count % 50 == 0:
-                        logging.info(f"[solve-stream] chunk#{chunk_count} ({len(content_chunk)}ch): {repr(content_chunk)}")
                     yield json.dumps({"type": "content_chunk", "content": content_chunk})
-            
-            logging.info(f"[solve-stream] COMPLETE — {chunk_count} chunks, {len(buffer)} chars")
-            logging.info(f"[solve-stream] FULL RESPONSE:\n{buffer[:2000]}")
-            if len(buffer) > 2000:
-                logging.info(f"[solve-stream] ... (truncated, {len(buffer) - 2000} more chars)")
-
-            dollar_count = buffer.count('$')
-            dd_count = buffer.count('$$')
-            newline_count = buffer.count('\n')
-            logging.info(f"[solve-stream] STATS: $ count={dollar_count}, $$ count={dd_count}, newlines={newline_count}")
 
             yield json.dumps({"type": "content_complete", "content": buffer})
     except Exception as e:

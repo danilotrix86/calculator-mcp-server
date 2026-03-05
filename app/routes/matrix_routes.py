@@ -39,8 +39,6 @@ async def matrix_operation_endpoint(request: Request, payload: MatrixOperationRe
     - rref: Reduced Row Echelon Form
     - norm: Calculate Frobenius norm
     """
-    logging.info(f"Matrix operation request: {payload.operation}")
-    
     result = perform_matrix_operation(
         operation=payload.operation,
         matrix_a=payload.matrix_a,
@@ -71,8 +69,6 @@ async def matrix_properties_endpoint(request: Request, payload: MatrixProperties
     """
     Get comprehensive properties of a matrix
     """
-    logging.info("Matrix properties request")
-    
     properties = get_matrix_properties(payload.matrix)
     
     if "error" in properties:

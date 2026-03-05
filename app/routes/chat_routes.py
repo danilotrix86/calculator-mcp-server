@@ -26,7 +26,6 @@ async def chat_session_endpoint(
     x_openai_api_key: str | None = Header(default=None),
 ) -> StreamingResponse:
     """Stream a chat tutor response given conversation history and problem context."""
-    logging.info(f"[chat] session request user={x_user_id} messages={len(payload.messages)}")
     return StreamingResponse(
         _sse_generator(payload, api_key_override=x_openai_api_key),
         media_type="text/event-stream",

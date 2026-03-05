@@ -170,21 +170,8 @@ async def execute_tool_call(name: Optional[str], args_json: str) -> str:
     except Exception as exc:
         return json.dumps({"error": f"Invalid arguments JSON: {exc}"})
     try:
-        logging.info("🧮 EXECUTING CALCULATION: %s with args: %s", name, parsed)
         result = func(**parsed)
         result_json = json.dumps(result)
-        logging.info("🧮 CALCULATION RESULT from %s: %s", name, result)
-        
-        # Log which library was used for this calculation
-        library = _TOOL_LIBRARIES.get(name, "Unknown Library")
-        logging.info("🧮 This result comes from %s, NOT from LLM inference!", library)
-        
-        # Log any extra data being returned (not just "result")
-        if isinstance(result, dict):
-            extra_keys = [k for k in result.keys() if k not in ("result", "error")]
-            if extra_keys:
-                logging.info("📊 ADDITIONAL DATA AVAILABLE: %s | Values: %s", name, {k: result[k] for k in extra_keys})
-        
         return result_json
     except Exception as exc:
         error_result = {"error": str(exc)}

@@ -79,8 +79,6 @@ class SolveService:
             pass
 
     async def solve(self, payload: SolveRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> SolveResponse:
-        logging.info("Processing solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
-        
         try:
             normalized_text = normalize_expression(payload.text)
         except Exception:
@@ -93,7 +91,6 @@ class SolveService:
             cached = await self.supabase_service.find_cached_response(f"Image upload: {normalized_text}")
             
         if cached:
-            logging.info("Found cached response for query: %s", payload.text[:50])
             tool_used = cached.get("tool_used")
             response_text = cached.get("response", "")
             return SolveResponse(
@@ -120,8 +117,6 @@ class SolveService:
             
             raise HTTPException(status_code=400, detail=result.error)
         
-        logging.info("Solve request completed successfully. Tool used: %s", result.tool_called if result.used_tool else "None")
-        
         # Update Supabase with response
         if query_id:
             await self.supabase_service.update_query_response(
@@ -133,10 +128,6 @@ class SolveService:
         return result
 
     async def solve_stream(self, payload: SolveRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
-        logging.info("Processing streaming solve request: %s", payload.text[:50] + "..." if len(payload.text) > 50 else payload.text)
-        if payload.spoken_text:
-            logging.info("Spoken text provided: %s", payload.spoken_text[:100] + "..." if len(payload.spoken_text) > 100 else payload.spoken_text)
-        
         try:
             normalized_text = normalize_expression(payload.text)
         except Exception:
@@ -149,8 +140,6 @@ class SolveService:
             cached = await self.supabase_service.find_cached_response(f"Image upload: {normalized_text}")
             
         if cached:
-            logging.info("Found cached response for query: %s", payload.text[:50])
-            
             tool_used = cached.get("tool_used")
             response_text = cached.get("response", "")
             
@@ -196,8 +185,6 @@ class SolveService:
 
     async def extract_image(self, payload: SolveImageRequest, api_key_override: Optional[str] = None) -> ExtractImageResponse:
         """Extract formula from image without solving it."""
-        logging.info("Processing image extraction request (extract-only)")
-
         image_hash = self._build_image_hash(payload.image_data)
         image_hash_key = self._image_hash_cache_key(image_hash)
 
@@ -205,7 +192,6 @@ class SolveService:
         if cached_by_hash:
             decoded = self._decode_image_hash_cache_response(cached_by_hash.get("response", ""))
             if decoded and decoded.get("formula"):
-                logging.info("Returning cached formula for image hash")
                 return ExtractImageResponse(formula=decoded["formula"])
 
         formula = await extract_formula_from_image(image_data=payload.image_data, api_key_override=api_key_override)
@@ -216,8 +202,6 @@ class SolveService:
         return ExtractImageResponse(formula=formula)
 
     async def solve_image(self, payload: SolveImageRequest, user_id: Optional[str] = None, api_key_override: Optional[str] = None) -> AsyncIterator[str]:
-        logging.info("Processing image solve request")
-        
         # Store the question in Supabase (initially as "Image upload")
         query_id = await self.supabase_service.save_query(
             "Image upload (formula extraction)", user_id=user_id,
@@ -283,7 +267,6 @@ class SolveService:
             # We key image cache entries by normalized extracted formula.
             cached = await self.supabase_service.find_cached_response(f"Image upload: {normalized_formula}")
             if cached:
-                logging.info("Found cached image solve response for formula: %s", normalized_formula[:50])
                 tool_used = cached.get("tool_used")
                 response_text = cached.get("response", "")
 
@@ -313,11 +296,9 @@ class SolveService:
                 if len(formulas) == 2 and all("=" in f for f in formulas):
                     # Format as a system of equations
                     query = f"Solve the system of equations: {formulas[0]} and {formulas[1]}"
-                    logging.info(f"Processing as a system of equations: {query}")
                 else:
                     # Otherwise just use the first formula
                     query = formulas[0]
-                    logging.info(f"Multiple formulas detected, using the first one: {query}")
             else:
                 query = formula
             
