@@ -3,23 +3,28 @@ import logging
 from typing import AsyncGenerator, Dict, List, Optional, Any
 
 from app.schemas.chat import ChatRequest
-from app.prompts import MATH_TUTOR_SYSTEM_PROMPT
+from app.prompts import MATH_TUTOR_SYSTEM_PROMPT, MATH_TUTOR_STANDALONE_PROMPT
 from app.services.openai_service import _chat_once
 from app.services.tool_registry import execute_tool_call
 
 
 def _build_chat_messages(request: ChatRequest) -> List[Dict[str, Any]]:
-    messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": MATH_TUTOR_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": f"Problema da risolvere:\n{request.initial_problem}",
-        },
-        {
-            "role": "assistant",
-            "content": f"Ho risolto il problema. Ecco la soluzione completa:\n\n{request.initial_solution}",
-        },
-    ]
+    if request.initial_problem and request.initial_solution:
+        messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": MATH_TUTOR_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"Problema da risolvere:\n{request.initial_problem}",
+            },
+            {
+                "role": "assistant",
+                "content": f"Ho risolto il problema. Ecco la soluzione completa:\n\n{request.initial_solution}",
+            },
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": MATH_TUTOR_STANDALONE_PROMPT},
+        ]
 
     history = request.messages[-request.max_turns:]
     for msg in history:
@@ -71,9 +76,9 @@ async def chat_with_openai_streaming(
         )
 
         buffer = ""
+        chunk_count = 0
         try:
             if isinstance(streaming_response, dict):
-                # Fallback: non-stream response (shouldn't happen but be safe)
                 content = ""
                 if "choices" in streaming_response and streaming_response["choices"]:
                     content = streaming_response["choices"][0].get("message", {}).get("content", "")
@@ -84,8 +89,16 @@ async def chat_with_openai_streaming(
                 async for chunk in streaming_response:
                     if chunk.choices and hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content:
                         piece = chunk.choices[0].delta.content
+                        chunk_count += 1
                         buffer += piece
+                        if chunk_count <= 20 or chunk_count % 50 == 0:
+                            logging.info(f"[chat-stream] chunk#{chunk_count} ({len(piece)}ch): {repr(piece)}")
                         yield json.dumps({"type": "content_chunk", "content": piece})
+
+                logging.info(f"[chat-stream] COMPLETE — {chunk_count} chunks, {len(buffer)} chars")
+                logging.info(f"[chat-stream] FULL RESPONSE:\n{buffer[:2000]}")
+                if len(buffer) > 2000:
+                    logging.info(f"[chat-stream] ... (truncated, {len(buffer) - 2000} more chars)")
                 yield json.dumps({"type": "content_complete", "content": buffer})
         except Exception as exc:
             logging.error(f"[chat] Streaming error (no-tool path): {exc}")
@@ -135,6 +148,7 @@ async def chat_with_openai_streaming(
     )
 
     buffer = ""
+    chunk_count = 0
     try:
         if isinstance(second_response, dict):
             if "error" in second_response:
@@ -150,10 +164,16 @@ async def chat_with_openai_streaming(
             async for chunk in second_response:
                 if chunk.choices and hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content:
                     piece = chunk.choices[0].delta.content
+                    chunk_count += 1
                     buffer += piece
+                    if chunk_count <= 20 or chunk_count % 50 == 0:
+                        logging.info(f"[chat-stream-tool] chunk#{chunk_count} ({len(piece)}ch): {repr(piece)}")
                     yield json.dumps({"type": "content_chunk", "content": piece})
 
-            logging.info(f"[chat] Full response ({len(buffer)} chars): {buffer[:300]}")
+            logging.info(f"[chat-stream-tool] COMPLETE — {chunk_count} chunks, {len(buffer)} chars")
+            logging.info(f"[chat-stream-tool] FULL RESPONSE:\n{buffer[:2000]}")
+            if len(buffer) > 2000:
+                logging.info(f"[chat-stream-tool] ... (truncated, {len(buffer) - 2000} more chars)")
             yield json.dumps({"type": "content_complete", "content": buffer})
     except Exception as exc:
         logging.error(f"[chat] Streaming error (tool path): {exc}")

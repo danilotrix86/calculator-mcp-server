@@ -11,13 +11,15 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(
         description="Sliding window of conversation turns (last N messages)"
     )
-    initial_problem: str = Field(
+    initial_problem: Optional[str] = Field(
+        default=None,
         max_length=4000,
-        description="The original math problem the user solved"
+        description="The original math problem the user solved (None for standalone tutor)"
     )
-    initial_solution: str = Field(
+    initial_solution: Optional[str] = Field(
+        default=None,
         max_length=16000,
-        description="The full solver response for context"
+        description="The full solver response for context (None for standalone tutor)"
     )
     max_turns: int = Field(
         default=10,

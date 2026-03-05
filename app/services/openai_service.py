@@ -339,59 +339,38 @@ async def solve_with_openai_streaming(query_text: str, api_key_override: Optiona
         stream=True
     )
     
-    # Handle streaming response
     buffer = ""
+    chunk_count = 0
     try:
-        # Check if we got a streaming response or a dict with error
         if isinstance(second_response, dict):
             if "error" in second_response:
                 yield json.dumps({"type": "error", "error": second_response["error"]})
             else:
-                # If it's a dict but not an error, try to get content from it
                 content = ""
                 if "choices" in second_response and len(second_response["choices"]) > 0:
                     if "message" in second_response["choices"][0]:
                         content = second_response["choices"][0]["message"].get("content", "")
                 yield json.dumps({"type": "content", "content": content})
         else:
-            # Normal streaming response
             async for chunk in second_response:
                 if hasattr(chunk.choices[0].delta, "content") and chunk.choices[0].delta.content:
                     content_chunk = chunk.choices[0].delta.content
+                    chunk_count += 1
                     buffer += content_chunk
+                    if chunk_count <= 20 or chunk_count % 50 == 0:
+                        logging.info(f"[solve-stream] chunk#{chunk_count} ({len(content_chunk)}ch): {repr(content_chunk)}")
                     yield json.dumps({"type": "content_chunk", "content": content_chunk})
             
-            # Log the full response for debugging
-            logging.info(f"📝 FULL MODEL RESPONSE (first 1500 chars):\n{buffer[:1500]}")
-            logging.info(f"📝 FULL MODEL RESPONSE LENGTH: {len(buffer)} chars")
-            
-            # Check for Unicode math symbols that should have been LaTeX
-            unicode_issues = []
-            if '√' in buffer:
-                # Find the position and context of the √ symbol
-                idx = buffer.find('√')
-                context = buffer[max(0, idx-30):min(len(buffer), idx+30)]
-                unicode_issues.append(f'√ at position {idx}, context: ...{context}...')
-            if '²' in buffer or '³' in buffer or '⁴' in buffer:
-                unicode_issues.append('superscripts (², ³, ⁴) found')
-            if '₀' in buffer or '₁' in buffer or '₂' in buffer:
-                unicode_issues.append('subscripts (₀, ₁, ₂) found')
-            
-            # Also check if $$ delimiters are present
-            if '$$' in buffer:
-                logging.info(f"✅ Found {buffer.count('$$')} $$ delimiters in response")
-            else:
-                logging.warning("⚠️ NO $$ DELIMITERS FOUND in response!")
-                
-            if '$' in buffer:
-                logging.info(f"✅ Found {buffer.count('$')} total $ characters in response")
-            else:
-                logging.warning("⚠️ NO $ DELIMITERS FOUND at all!")
-                
-            if unicode_issues:
-                logging.warning(f"⚠️ MODEL OUTPUT CONTAINS UNICODE MATH SYMBOLS: {'; '.join(unicode_issues)}")
-            
-            # Send final complete message
+            logging.info(f"[solve-stream] COMPLETE — {chunk_count} chunks, {len(buffer)} chars")
+            logging.info(f"[solve-stream] FULL RESPONSE:\n{buffer[:2000]}")
+            if len(buffer) > 2000:
+                logging.info(f"[solve-stream] ... (truncated, {len(buffer) - 2000} more chars)")
+
+            dollar_count = buffer.count('$')
+            dd_count = buffer.count('$$')
+            newline_count = buffer.count('\n')
+            logging.info(f"[solve-stream] STATS: $ count={dollar_count}, $$ count={dd_count}, newlines={newline_count}")
+
             yield json.dumps({"type": "content_complete", "content": buffer})
     except Exception as e:
         logging.error(f"Error in streaming response: {str(e)}")
