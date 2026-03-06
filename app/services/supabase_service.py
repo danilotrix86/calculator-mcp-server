@@ -214,6 +214,65 @@ class SupabaseService:
             logging.error("Error finding cached response: %s", str(e))
             return None
 
+    async def get_all_requests_admin(
+        self,
+        page: int = 1,
+        limit: int = 20,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return paginated request history for admin (all users).
+
+        Returns a tuple of (items, total_count). Items are ordered by
+        created_at descending (newest first). Excludes internal cache rows.
+        Joins with users table to get user name and email.
+        """
+        if not self.client:
+            return [], 0
+
+        try:
+            offset = (page - 1) * limit
+
+            count_query = (
+                self.client.table("user_queries")
+                .select("id", count="exact")
+                .neq("query_type", "image_hash_cache")
+            )
+            count_result = await run_in_threadpool(count_query.execute)
+            total = count_result.count if count_result.count is not None else 0
+
+            data_query = (
+                self.client.table("user_queries")
+                .select("id, user_id, question, query_text, response, tool_used, query_type, created_at, users(name, email)")
+                .neq("query_type", "image_hash_cache")
+                .order("created_at", desc=True)
+                .range(offset, offset + limit - 1)
+            )
+            data_result = await run_in_threadpool(data_query.execute)
+
+            return data_result.data or [], total
+        except Exception as e:
+            logging.error("Error fetching admin requests: %s", str(e))
+            return [], 0
+
+    async def get_request_by_id_admin(self, query_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single query row by ID for admin (no user scoping).
+        Joins with users table to get user name and email.
+        """
+        if not self.client:
+            return None
+
+        try:
+            query = (
+                self.client.table("user_queries")
+                .select("id, user_id, question, query_text, response, tool_used, query_type, created_at, users(name, email)")
+                .eq("id", query_id)
+                .single()
+            )
+            result = await run_in_threadpool(query.execute)
+            return result.data
+        except Exception as e:
+            logging.error("Error fetching request by id for admin: %s", str(e))
+            return None
+
 # Singleton instance for backward compatibility if needed, 
 # but we prefer dependency injection
 _supabase_service_instance = None

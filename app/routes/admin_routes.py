@@ -5,6 +5,7 @@ from app.middleware.auth import verify_admin
 from app.middleware.rate_limit import limiter
 from app.config import rate_limit_config
 from app.services import blog_admin_service
+from app.services.supabase_service import get_supabase_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -197,6 +198,77 @@ async def delete_post(request: Request, post_id: str, username: str = Depends(ve
     return {"success": True}
 
 
+# ============== REQUESTS ==============
+
+@router.get("/requests")
+@limiter.limit(rate_limit_config.ADMIN)
+async def get_requests(
+    request: Request,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    username: str = Depends(verify_admin)
+):
+    """Get all user requests (admin view)."""
+    supabase_service = get_supabase_service()
+    requests_data, total = await supabase_service.get_all_requests_admin(page, limit)
+    
+    items = []
+    for req in requests_data:
+        response_text = req.get("response") or ""
+        response_preview = response_text[:100] + "..." if len(response_text) > 100 else response_text
+        
+        user_info = req.get("users")
+        user_name = user_info.get("name") if user_info else None
+        user_email = user_info.get("email") if user_info else None
+        
+        # Prefer query_text (original with spaces) over question (normalized without spaces)
+        display_question = req.get("query_text") or req.get("question")
+        
+        items.append({
+            "id": req.get("id"),
+            "userId": req.get("user_id"),
+            "userName": user_name,
+            "userEmail": user_email,
+            "question": display_question,
+            "responsePreview": response_preview,
+            "queryType": req.get("query_type"),
+            "toolUsed": req.get("tool_used"),
+            "createdAt": req.get("created_at"),
+        })
+    
+    return {"requests": items, "total": total}
+
+
+@router.get("/requests/{request_id}")
+@limiter.limit(rate_limit_config.ADMIN)
+async def get_request(request: Request, request_id: str, username: str = Depends(verify_admin)):
+    """Get a single request by ID (admin view)."""
+    supabase_service = get_supabase_service()
+    req = await supabase_service.get_request_by_id_admin(request_id)
+    
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    user_info = req.get("users")
+    user_name = user_info.get("name") if user_info else None
+    user_email = user_info.get("email") if user_info else None
+    
+    # Prefer query_text (original with spaces) over question (normalized without spaces)
+    display_question = req.get("query_text") or req.get("question")
+    
+    return {
+        "request": {
+            "id": req.get("id"),
+            "userId": req.get("user_id"),
+            "userName": user_name,
+            "userEmail": user_email,
+            "question": display_question,
+            "response": req.get("response"),
+            "queryType": req.get("query_type"),
+            "toolUsed": req.get("tool_used"),
+            "createdAt": req.get("created_at"),
+        }
+    }
 
 
 
