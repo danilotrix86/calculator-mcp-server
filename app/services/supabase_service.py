@@ -241,7 +241,7 @@ class SupabaseService:
 
             data_query = (
                 self.client.table("user_queries")
-                .select("id, user_id, question, query_text, response, tool_used, query_type, created_at, users(name, email)")
+                .select("id, user_id, question, query_text, response, tool_used, query_type, created_at, app_users(name, email)")
                 .neq("query_type", "image_hash_cache")
                 .order("created_at", desc=True)
                 .range(offset, offset + limit - 1)
@@ -263,7 +263,7 @@ class SupabaseService:
         try:
             query = (
                 self.client.table("user_queries")
-                .select("id, user_id, question, query_text, response, tool_used, query_type, created_at, users(name, email)")
+                .select("id, user_id, question, query_text, response, tool_used, query_type, created_at, app_users(name, email)")
                 .eq("id", query_id)
                 .single()
             )

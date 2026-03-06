@@ -217,12 +217,19 @@ async def get_requests(
         response_text = req.get("response") or ""
         response_preview = response_text[:100] + "..." if len(response_text) > 100 else response_text
         
-        user_info = req.get("users")
+        user_info = req.get("app_users")
         user_name = user_info.get("name") if user_info else None
         user_email = user_info.get("email") if user_info else None
         
-        # Prefer query_text (original with spaces) over question (normalized without spaces)
-        display_question = req.get("query_text") or req.get("question")
+        query_type = req.get("query_type")
+        query_text = req.get("query_text") or ""
+        question = req.get("question") or ""
+        # For text queries, prefer query_text (original with spaces);
+        # for image queries, prefer question (updated with extracted formula).
+        if query_type == "image" or query_text.startswith("Image upload"):
+            display_question = question
+        else:
+            display_question = query_text or question
         
         items.append({
             "id": req.get("id"),
@@ -249,12 +256,17 @@ async def get_request(request: Request, request_id: str, username: str = Depends
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     
-    user_info = req.get("users")
+    user_info = req.get("app_users")
     user_name = user_info.get("name") if user_info else None
     user_email = user_info.get("email") if user_info else None
     
-    # Prefer query_text (original with spaces) over question (normalized without spaces)
-    display_question = req.get("query_text") or req.get("question")
+    query_type = req.get("query_type")
+    query_text = req.get("query_text") or ""
+    question = req.get("question") or ""
+    if query_type == "image" or query_text.startswith("Image upload"):
+        display_question = question
+    else:
+        display_question = query_text or question
     
     return {
         "request": {
