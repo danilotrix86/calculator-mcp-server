@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from supabase import create_client, acreate_client, Client, AsyncClient
 from fastapi.concurrency import run_in_threadpool
 from dotenv import load_dotenv
@@ -99,6 +99,73 @@ class SupabaseService:
         except Exception as e:
             logging.error("Error updating Supabase with error response: %s", str(e))
             return False
+
+    async def get_user_history(
+        self,
+        user_id: str,
+        page: int = 1,
+        limit: int = 20,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Return paginated history for a given user.
+
+        Returns a tuple of (items, total_count).  Items are ordered by
+        ``created_at`` descending (newest first).  Only rows with a
+        non-empty, non-error response are included.
+        """
+        if not self.client:
+            return [], 0
+
+        try:
+            offset = (page - 1) * limit
+
+            count_query = (
+                self.client.table("user_queries")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .not_.is_("response", "null")
+                .not_.like("response", "Error:%")
+                .neq("response", "")
+                .neq("query_type", "image_hash_cache")
+            )
+            count_result = await run_in_threadpool(count_query.execute)
+            total = count_result.count if count_result.count is not None else 0
+
+            data_query = (
+                self.client.table("user_queries")
+                .select("id, question, response, tool_used, query_type, created_at")
+                .eq("user_id", user_id)
+                .not_.is_("response", "null")
+                .not_.like("response", "Error:%")
+                .neq("response", "")
+                .neq("query_type", "image_hash_cache")
+                .order("created_at", desc=True)
+                .range(offset, offset + limit - 1)
+            )
+            data_result = await run_in_threadpool(data_query.execute)
+
+            return data_result.data or [], total
+        except Exception as e:
+            logging.error("Error fetching user history: %s", str(e))
+            return [], 0
+
+    async def get_query_by_id(self, query_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single query row by ID, scoped to the given user."""
+        if not self.client:
+            return None
+
+        try:
+            query = (
+                self.client.table("user_queries")
+                .select("id, question, response, tool_used, query_type, created_at")
+                .eq("id", query_id)
+                .eq("user_id", user_id)
+                .single()
+            )
+            result = await run_in_threadpool(query.execute)
+            return result.data
+        except Exception as e:
+            logging.error("Error fetching query by id: %s", str(e))
+            return None
 
     async def find_cached_response(self, question: str, ttl_hours: int = 24) -> Optional[Dict[str, Any]]:
         """Find a cached response for the given question."""
