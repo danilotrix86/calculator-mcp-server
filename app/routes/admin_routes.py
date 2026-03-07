@@ -6,6 +6,7 @@ from app.middleware.rate_limit import limiter
 from app.config import rate_limit_config
 from app.services import blog_admin_service
 from app.services.supabase_service import get_supabase_service
+from app.services import retention_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -282,7 +283,14 @@ async def get_request(request: Request, request_id: str, username: str = Depends
         }
     }
 
+# ============== RETENTION ==============
 
+@router.get("/retention")
+@limiter.limit(rate_limit_config.ADMIN)
+async def get_retention(request: Request, username: str = Depends(verify_admin)):
+    """Get user retention analytics."""
+    data = await retention_service.get_retention_metrics()
+    return data
 
 
 
